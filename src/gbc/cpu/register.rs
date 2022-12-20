@@ -1,6 +1,6 @@
 use enum_map::{Enum};
 
-#[derive(Enum)]
+#[derive(Clone, Copy, Enum)]
 pub enum Register {
     A,
     F,

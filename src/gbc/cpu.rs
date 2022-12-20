@@ -1,9 +1,10 @@
 mod op_code;
 mod register;
 
-use crate::gbc::cpu::op_code::{parse_opcode, Operation};
-use crate::gbc::cpu::register::Register;
-use crate::gbc::memory::{VirtualMemory, PROGRAM_START_ADDR};
+use self::op_code::{parse_opcode, OPDest, OPDest16, OPSrc, OPSrc16, Operation, OperationType};
+use self::register::Register;
+use super::memory::{VirtualMemory, PROGRAM_START_ADDR};
+
 use enum_map::{enum_map, EnumMap};
 
 pub struct CPU {
@@ -57,128 +58,144 @@ impl CPU {
 
     pub fn execute(&mut self, mem: &mut VirtualMemory) {
         let opcode = self.fetch(mem);
-
-        match parse_opcode(opcode) {
-            /*
-             * 8-bit transfer instructions
-             */
-            // Load contents of one register to another
-            Operation::LdRegToReg { dest, src } => {
-                self.registers[dest] = self.registers[src];
+        let Operation { op, cycles } = parse_opcode(opcode);
+        match op {
+            // Load source into destination
+            OperationType::LD(dest, src) => self.ld(mem, dest, src),
+            // Load source into destination and increment the register pair used for src
+            OperationType::LDAndIncrementSrc(dest, src) => {
+                if let OPSrc::RegisterPairAsPointer(high, low) = src {
+                    self.ld(mem, dest, src);
+                    let new_hl = u16::wrapping_add(self.read_register_pair(high, low), 1);
+                    self.write_register_pair(high, low, new_hl);
+                } else {
+                    panic!("Operation only supported for register pair as pointer!")
+                }
             }
-            // Load data at program counter to register
-            Operation::LdImmediateDataToReg { dest } => {
-                self.registers[dest] = self.fetch(mem);
+            // Load source into destination and decrement the register pair used for src
+            OperationType::LDAndDecrementSrc(dest, src) => {
+                if let OPSrc::RegisterPairAsPointer(high, low) = src {
+                    self.ld(mem, dest, src);
+                    let new_hl = u16::wrapping_sub(self.read_register_pair(high, low), 1);
+                    self.write_register_pair(high, low, new_hl);
+                } else {
+                    panic!("Operation only supported for register pair as pointer!")
+                }
             }
-            // Load data at address denoted by register pairing to register
-            Operation::LdRegPairAddrToReg { dest, src } => {
-                let addr = self.read_register_pair(src.0, src.1);
-                self.registers[dest] = mem.read(addr);
+            // Load source into destination and increment the register pair used for dest
+            OperationType::LDAndIncrementDest(dest, src) => {
+                if let OPDest::RegisterPairAsPointer(high, low) = dest {
+                    self.ld(mem, dest, src);
+                    let new_hl = u16::wrapping_add(self.read_register_pair(high, low), 1);
+                    self.write_register_pair(high, low, new_hl);
+                } else {
+                    panic!("Operation only supported for register pair as pointer!")
+                }
             }
-            // Load register contents to address denoted by register pairing
-            Operation::LdRegToRegPairAddr { dest, src } => {
-                let addr = self.read_register_pair(dest.0, dest.1);
-                mem.write(addr, self.registers[src]);
+            // Load source into destination and decrement the register pair used for dest
+            OperationType::LDAndDecrementDest(dest, src) => {
+                if let OPDest::RegisterPairAsPointer(high, low) = dest {
+                    self.ld(mem, dest, src);
+                    let new_hl = u16::wrapping_sub(self.read_register_pair(high, low), 1);
+                    self.write_register_pair(high, low, new_hl);
+                } else {
+                    panic!("Operation only supported for register pair as pointer!")
+                }
             }
-            // Load data at program counter to address denoted by H & L register pairing
-            Operation::LdImmediateDataToHLAddr => {
-                let addr = self.read_register_pair(Register::H, Register::L);
-                mem.write(addr, self.fetch(mem))
-            }
-            // Load data at address denoted by register C to register A
-            Operation::LdRegCAddrToRegA => {
-                let addr = 0xFF00 | self.registers[Register::C] as u16;
-                self.registers[Register::A] = mem.read(addr);
-            }
-            // Load contents of register A to address denoted by register C
-            Operation::LdRegAToRegCAddr => {
-                let addr = 0xFF00 | self.registers[Register::C] as u16;
-                mem.write(addr, self.registers[Register::A]);
-            }
-            // Load data at address denoted at program counter to register A
-            Operation::LdImmediateAddrToRegA => {
-                let addr = 0xFF00 | self.fetch(mem) as u16;
-                self.registers[Register::A] = mem.read(addr);
-            }
-            // Load register A contents to address denoted at program counter
-            Operation::LdRegAToImmediateAddr => {
-                let addr = 0xFF00 | self.fetch(mem) as u16;
-                mem.write(addr, self.registers[Register::A]);
-            }
-            // Load data at address denoted by 16bits at program counter to register A
-            Operation::LdImmediate16BitAddrToRegA => {
-                let addr = self.fetch_16(mem);
-                self.registers[Register::A] = mem.read(addr);
-            }
-            // Load register A contents to address denoted by 16bits at program counter
-            Operation::LdRegAToImmediate16BitAddr => {
-                let addr = self.fetch_16(mem);
-                mem.write(addr, self.registers[Register::A]);
-            }
-            // Load data at address denoted by H & L register pair to register A and increment HL
-            Operation::LdHLAddrToRegAAndIncrement => {
-                let addr = self.read_register_pair(Register::H, Register::L);
-                self.registers[Register::A] = mem.read(addr);
-                let new_hl = u16::wrapping_add(addr, 1);
-                self.write_register_pair(Register::H, Register::L, new_hl);
-            }
-            // Load data at address denoted by H & L register pair to register A and decrement HL
-            Operation::LdHLAddrToRegAAndDecrement => {
-                let addr = self.read_register_pair(Register::H, Register::L);
-                self.registers[Register::A] = mem.read(addr);
-                let new_hl = u16::wrapping_sub(addr, 1);
-                self.write_register_pair(Register::H, Register::L, new_hl);
-            }
-            // Load register A contents to address denoted by H & L register pair and increment HL
-            Operation::LdRegAToHLAddrAndIncrement => {
-                let addr = self.read_register_pair(Register::H, Register::L);
-                mem.write(addr, self.registers[Register::A]);
-                let new_hl = u16::wrapping_add(addr, 1);
-                self.write_register_pair(Register::H, Register::L, new_hl);
-            }
-            // Load register A contents to address denoted by H & L register pair and decrement HL
-            Operation::LdRegAToHLAddrAndDecrement => {
-                let addr = self.read_register_pair(Register::H, Register::L);
-                mem.write(addr, self.registers[Register::A]);
-                let new_hl = u16::wrapping_sub(addr, 1);
-                self.write_register_pair(Register::H, Register::L, new_hl);
-            }
-
-            /*
-             * 16-bit transfer instructions
-             */
-            // Load 16bits at program counter to register
-            Operation::LdImmediate16BitDataToRegPair { dest } => {
-                let val = self.fetch_16(mem);
-                self.write_register_pair(dest.0, dest.1, val);
-            }
-            // Load 16bits at program counter to Stack Pointer
-            Operation::LdImmediate16BitDataToSP => {
-                self.sp = self.fetch_16(mem);
-            }
-            // Load H & L register pair contents to Stack Pointer
-            Operation::LdRegHLToSP => {
-                self.sp = self.read_register_pair(Register::H, Register::L);
-            }
-            // Push register pair contents to stack
-            Operation::PushRegPairToStack { src } => {
-                let val = self.read_register_pair(src.0, src.1);
-                let val_high = (val >> 8) as u8;
-                let val_low = val as u8;
+            // Load 16 bit source into destination
+            OperationType::LD16(dest, src) => self.ld_16(mem, dest, src),
+            // Push src onto the stack
+            OperationType::PUSH(src) => {
+                let val = self.read_op_src_16(mem, src);
                 self.sp -= 1;
-                mem.write(self.sp, val_high);
+                mem.write(self.sp, (val >> 8) as u8);
                 self.sp -= 1;
-                mem.write(self.sp, val_low);
+                mem.write(self.sp, val as u8);
             }
-            // Pop stack to register pair
-            Operation::PopStackToRegPair { dest } => {
+            // Pop the stack
+            OperationType::POP(dest) => {
                 let val_low = mem.read(self.sp);
                 self.sp += 1;
                 let val_high = mem.read(self.sp);
                 self.sp += 1;
-                self.registers[dest.0] = val_high;
-                self.registers[dest.1] = val_low;
+                let val = (val_high as u16) << 8 | val_low as u16;
+                self.write_op_dest_16(dest, val);
             }
         };
+    }
+
+    /*
+     * 8-bit transfer instructions
+     */
+    fn ld(&mut self, mem: &mut VirtualMemory, dest: OPDest, src: OPSrc) {
+        let value = self.read_op_src(mem, src);
+        self.write_op_dest(mem, dest, value);
+    }
+
+    fn read_op_src(&mut self, mem: &VirtualMemory, src: OPSrc) -> u8 {
+        match src {
+            OPSrc::Register(reg) => self.registers[reg],
+            OPSrc::RegisterAsPointer(reg) => {
+                let addr = 0xFF00 | self.registers[reg] as u16;
+                mem.read(addr)
+            }
+            OPSrc::RegisterPairAsPointer(high, low) => {
+                let addr = self.read_register_pair(high, low);
+                mem.read(addr)
+            }
+            OPSrc::PCImmediate => self.fetch(mem),
+            OPSrc::PCImmediateAsPointer => {
+                let addr = 0xFF00 | self.fetch(mem) as u16;
+                mem.read(addr)
+            }
+            OPSrc::PCImmediateAsPointer16 => {
+                let addr = self.fetch_16(mem);
+                mem.read(addr)
+            }
+        }
+    }
+
+    fn write_op_dest(&mut self, mem: &mut VirtualMemory, dest: OPDest, value: u8) {
+        match dest {
+            OPDest::Register(reg) => self.registers[reg] = value,
+            OPDest::RegisterAsPointer(reg) => {
+                let addr = 0xFF00 | self.registers[reg] as u16;
+                mem.write(addr, value);
+            }
+            OPDest::RegisterPairAsPointer(high, low) => {
+                let addr = self.read_register_pair(high, low);
+                mem.write(addr, value);
+            }
+            OPDest::PCImmediateAsPointer => {
+                let addr = 0xFF00 | self.fetch(mem) as u16;
+                mem.write(addr, value);
+            }
+            OPDest::PCImmediateAsPointer16 => {
+                let addr = self.fetch_16(mem);
+                mem.write(addr, value);
+            }
+        }
+    }
+
+    /*
+     * 16-bit transfer instructions
+     */
+    fn ld_16(&mut self, mem: &VirtualMemory, dest: OPDest16, src: OPSrc16) {
+        let value = self.read_op_src_16(mem, src);
+        self.write_op_dest_16(dest, value);
+    }
+
+    fn read_op_src_16(&mut self, mem: &VirtualMemory, src: OPSrc16) -> u16 {
+        match src {
+            OPSrc16::RegisterPair(high, low) => self.read_register_pair(high, low),
+            OPSrc16::PCImmediate16 => self.fetch_16(mem),
+        }
+    }
+
+    fn write_op_dest_16(&mut self, dest: OPDest16, value: u16) {
+        match dest {
+            OPDest16::RegisterPair(high, low) => self.write_register_pair(high, low, value),
+            OPDest16::StackPointerRegister => self.sp = value,
+        }
     }
 }
