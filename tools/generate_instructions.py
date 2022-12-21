@@ -38,17 +38,17 @@ for dest in LD_REG_CODES.keys():
     instr_bin = ('01' + LD_REG_CODES[dest] + '110')
     print_operation(
         instr_bin,
-        f'OperationType::LD(OPDest::Register(Register::{dest}), OPSrc::RegisterPairAsPointer(Register::H, Register::L))',
+        f'OperationType::LD(OPDest::Register(Register::{dest}), OPSrc::RegisterPairAsPointer(RegisterPair::HL))',
         2
     )
 print_operation(
     '00001010',
-    f'OperationType::LD(OPDest::Register(Register::A), OPSrc::RegisterPairAsPointer(Register::B, Register::C))',
+    f'OperationType::LD(OPDest::Register(Register::A), OPSrc::RegisterPairAsPointer(RegisterPair::BC))',
     2
 )
 print_operation(
     '00011010',
-    f'OperationType::LD(OPDest::Register(Register::A), OPSrc::RegisterPairAsPointer(Register::D, Register::E))',
+    f'OperationType::LD(OPDest::Register(Register::A), OPSrc::RegisterPairAsPointer(RegisterPair::DE))',
     2
 )
 
@@ -56,23 +56,23 @@ for src in LD_REG_CODES.keys():
     instr_bin = ('01110' + LD_REG_CODES[src])
     print_operation(
         instr_bin,
-        f'OperationType::LD(OPDest::RegisterPairAsPointer(Register::H, Register::L), OPSrc::Register(Register::{src}))',
+        f'OperationType::LD(OPDest::RegisterPairAsPointer(RegisterPair::HL), OPSrc::Register(Register::{src}))',
         2
     )
 print_operation(
     '00000010',
-    f'OperationType::LD(OPDest::RegisterPairAsPointer(Register::B, Register::C), OPSrc::Register(Register::A))',
+    f'OperationType::LD(OPDest::RegisterPairAsPointer(RegisterPair::BC), OPSrc::Register(Register::A))',
     2
 )
 print_operation(
     '00010010',
-    f'OperationType::LD(OPDest::RegisterPairAsPointer(Register::D, Register::E), OPSrc::Register(Register::A))',
+    f'OperationType::LD(OPDest::RegisterPairAsPointer(RegisterPair::DE), OPSrc::Register(Register::A))',
     2
 )
 
 print_operation(
     '00110110',
-    f'OperationType::LD(OPDest::RegisterPairAsPointer(Register::H, Register::L), OPSrc::PCImmediate)',
+    f'OperationType::LD(OPDest::RegisterPairAsPointer(RegisterPair::HL), OPSrc::PCImmediate)',
     3
 )
 
@@ -112,23 +112,23 @@ print_operation(
 
 print_operation(
     '00101010',
-    f'OperationType::LDAndIncrementSrc(OPDest::Register(Register::A), OPSrc::RegisterPairAsPointer(Register::H, Register::L))',
+    f'OperationType::LDAndIncrementSrc(OPDest::Register(Register::A), OPSrc::RegisterPairAsPointer(RegisterPair::HL))',
     2
 )
 print_operation(
     '00111010',
-    f'OperationType::LDAndDecrementSrc(OPDest::Register(Register::A), OPSrc::RegisterPairAsPointer(Register::H, Register::L))',
+    f'OperationType::LDAndDecrementSrc(OPDest::Register(Register::A), OPSrc::RegisterPairAsPointer(RegisterPair::HL))',
     2
 )
 
 print_operation(
     '00100010',
-    f'OperationType::LDAndIncrementDest(OPDest::RegisterPairAsPointer(Register::H, Register::L), OPSrc::Register(Register::A))',
+    f'OperationType::LDAndIncrementDest(OPDest::RegisterPairAsPointer(RegisterPair::HL), OPSrc::Register(Register::A))',
     2
 )
 print_operation(
     '00110010',
-    f'OperationType::LDAndDecrementDest(OPDest::RegisterPairAsPointer(Register::H, Register::L), OPSrc::Register(Register::A))',
+    f'OperationType::LDAndDecrementDest(OPDest::RegisterPairAsPointer(RegisterPair::HL), OPSrc::Register(Register::A))',
     2
 )
 
@@ -144,7 +144,7 @@ for (dest_high, dest_low) in LD_REG_PAIR_CODES.keys():
     instr_bin = ('00' + LD_REG_PAIR_CODES[(dest_high, dest_low)] + '0001')
     print_operation(
         instr_bin,
-        f'OperationType::LD16(OPDest16::RegisterPair(Register::{dest_high}, Register::{dest_low}), OPSrc16::PCImmediate16)',
+        f'OperationType::LD16(OPDest16::RegisterPair(RegisterPair::{dest_high}{dest_low}), OPSrc16::PCImmediate16)',
         3
     )
 print_operation(
@@ -155,7 +155,7 @@ print_operation(
 
 print_operation(
     '11111001',
-    f'OperationType::LD16(OPDest16::StackPointerRegister, OPSrc16::RegisterPair(Register::H, Register::L))',
+    f'OperationType::LD16(OPDest16::StackPointerRegister, OPSrc16::RegisterPair(RegisterPair::HL))',
     2
 )
 
@@ -170,7 +170,7 @@ for (src_high, src_low) in PUSH_REG_PAIR_CODES.keys():
     instr_bin = ('11' + PUSH_REG_PAIR_CODES[(src_high, src_low)] + '0101')
     print_operation(
         instr_bin,
-        f'OperationType::PUSH(OPSrc16::RegisterPair(Register::{src_high}, Register::{src_low}))',
+        f'OperationType::PUSH(OPSrc16::RegisterPair(RegisterPair::{src_high}{src_low}))',
         4
     )
 
@@ -178,6 +178,6 @@ for (dest_high, dest_low) in PUSH_REG_PAIR_CODES.keys():
     instr_bin = ('11' + PUSH_REG_PAIR_CODES[(dest_high, dest_low)] + '0001')
     print_operation(
         instr_bin,
-        f'OperationType::POP(OPDest16::RegisterPair(Register::{dest_high}, Register::{dest_low}))',
+        f'OperationType::POP(OPDest16::RegisterPair(RegisterPair::{dest_high}{dest_low}))',
         3
     )

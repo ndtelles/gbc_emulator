@@ -2,13 +2,13 @@ mod op_code;
 mod register;
 
 use self::op_code::{parse_opcode, OPDest, OPDest16, OPSrc, OPSrc16, Operation, OperationType};
-use self::register::Register;
+use self::register::{Register, RegisterPair, RegisterPairData};
 use super::memory::{VirtualMemory, PROGRAM_START_ADDR};
 
 use enum_map::{enum_map, EnumMap};
 
 pub struct CPU {
-    registers: EnumMap<Register, u8>,
+    registers: EnumMap<RegisterPair, RegisterPairData>,
     pc: u16,
     sp: u16,
 }
@@ -16,16 +16,11 @@ pub struct CPU {
 impl CPU {
     pub fn new() -> Self {
         Self {
-            // Efficient way of mapping registers on the stack
             registers: enum_map! {
-                Register::A => 0,
-                Register::F => 0,
-                Register::B => 0,
-                Register::C => 0,
-                Register::D => 0,
-                Register::E => 0,
-                Register::H => 0,
-                Register::L => 0
+                RegisterPair::AF => RegisterPairData {high: 0x00, low: 0x00},
+                RegisterPair::BC => RegisterPairData {high: 0x00, low: 0x00},
+                RegisterPair::DE => RegisterPairData {high: 0x00, low: 0x00},
+                RegisterPair::HL => RegisterPairData {high: 0x00, low: 0x00},
             },
             // Start of user program
             pc: PROGRAM_START_ADDR,
@@ -34,14 +29,21 @@ impl CPU {
         }
     }
 
-    fn read_register_pair(&self, high: Register, low: Register) -> u16 {
-        ((self.registers[high] as u16) << 8) | self.registers[low] as u16
+    fn read_register(&self, register: Register) -> u8 {
+        *RegisterPair::get_individual_register(&self.registers, register)
+    }
+
+    fn write_register(&mut self, register: Register, val: u8) {
+        *RegisterPair::get_individual_register_mut(&mut self.registers, register) = val;
+    }
+
+    fn read_register_pair(&self, pair: RegisterPair) -> u16 {
+        self.registers[pair].read()
     }
 
     // Write Big Endian value to register pair
-    fn write_register_pair(&mut self, high: Register, low: Register, val: u16) {
-        self.registers[high] = (val >> 8) as u8;
-        self.registers[low] = val as u8;
+    fn write_register_pair(&mut self, pair: RegisterPair, val: u16) {
+        self.registers[pair].write(val);
     }
 
     // Fetch next 8 bits at program counter
@@ -53,7 +55,7 @@ impl CPU {
 
     // Fetch next 16 bits (little endian) at program counter. Return as big endian
     fn fetch_16(&mut self, mem: &VirtualMemory) -> u16 {
-        self.fetch(mem) as u16 | (self.fetch(mem) as u16) << 8
+        self.fetch(mem) as u16 | ((self.fetch(mem) as u16) << 8)
     }
 
     pub fn execute(&mut self, mem: &mut VirtualMemory) {
@@ -64,40 +66,40 @@ impl CPU {
             OperationType::LD(dest, src) => self.ld(mem, dest, src),
             // Load source into destination and increment the register pair used for src
             OperationType::LDAndIncrementSrc(dest, src) => {
-                if let OPSrc::RegisterPairAsPointer(high, low) = src {
+                if let OPSrc::RegisterPairAsPointer(reg_pair) = src {
                     self.ld(mem, dest, src);
-                    let new_hl = u16::wrapping_add(self.read_register_pair(high, low), 1);
-                    self.write_register_pair(high, low, new_hl);
+                    let new_hl = u16::wrapping_add(self.read_register_pair(reg_pair), 1);
+                    self.write_register_pair(reg_pair, new_hl);
                 } else {
                     panic!("Operation only supported for register pair as pointer!")
                 }
             }
             // Load source into destination and decrement the register pair used for src
             OperationType::LDAndDecrementSrc(dest, src) => {
-                if let OPSrc::RegisterPairAsPointer(high, low) = src {
+                if let OPSrc::RegisterPairAsPointer(reg_pair) = src {
                     self.ld(mem, dest, src);
-                    let new_hl = u16::wrapping_sub(self.read_register_pair(high, low), 1);
-                    self.write_register_pair(high, low, new_hl);
+                    let new_hl = u16::wrapping_sub(self.read_register_pair(reg_pair), 1);
+                    self.write_register_pair(reg_pair, new_hl);
                 } else {
                     panic!("Operation only supported for register pair as pointer!")
                 }
             }
             // Load source into destination and increment the register pair used for dest
             OperationType::LDAndIncrementDest(dest, src) => {
-                if let OPDest::RegisterPairAsPointer(high, low) = dest {
+                if let OPDest::RegisterPairAsPointer(reg_pair) = dest {
                     self.ld(mem, dest, src);
-                    let new_hl = u16::wrapping_add(self.read_register_pair(high, low), 1);
-                    self.write_register_pair(high, low, new_hl);
+                    let new_hl = u16::wrapping_add(self.read_register_pair(reg_pair), 1);
+                    self.write_register_pair(reg_pair, new_hl);
                 } else {
                     panic!("Operation only supported for register pair as pointer!")
                 }
             }
             // Load source into destination and decrement the register pair used for dest
             OperationType::LDAndDecrementDest(dest, src) => {
-                if let OPDest::RegisterPairAsPointer(high, low) = dest {
+                if let OPDest::RegisterPairAsPointer(reg_pair) = dest {
                     self.ld(mem, dest, src);
-                    let new_hl = u16::wrapping_sub(self.read_register_pair(high, low), 1);
-                    self.write_register_pair(high, low, new_hl);
+                    let new_hl = u16::wrapping_sub(self.read_register_pair(reg_pair), 1);
+                    self.write_register_pair(reg_pair, new_hl);
                 } else {
                     panic!("Operation only supported for register pair as pointer!")
                 }
@@ -134,13 +136,13 @@ impl CPU {
 
     fn read_op_src(&mut self, mem: &VirtualMemory, src: OPSrc) -> u8 {
         match src {
-            OPSrc::Register(reg) => self.registers[reg],
+            OPSrc::Register(reg) => self.read_register(reg),
             OPSrc::RegisterAsPointer(reg) => {
-                let addr = 0xFF00 | self.registers[reg] as u16;
+                let addr = 0xFF00 | self.read_register(reg) as u16;
                 mem.read(addr)
             }
-            OPSrc::RegisterPairAsPointer(high, low) => {
-                let addr = self.read_register_pair(high, low);
+            OPSrc::RegisterPairAsPointer(reg_pair) => {
+                let addr = self.read_register_pair(reg_pair);
                 mem.read(addr)
             }
             OPSrc::PCImmediate => self.fetch(mem),
@@ -155,24 +157,24 @@ impl CPU {
         }
     }
 
-    fn write_op_dest(&mut self, mem: &mut VirtualMemory, dest: OPDest, value: u8) {
+    fn write_op_dest(&mut self, mem: &mut VirtualMemory, dest: OPDest, val: u8) {
         match dest {
-            OPDest::Register(reg) => self.registers[reg] = value,
+            OPDest::Register(reg) => self.write_register(reg, val),
             OPDest::RegisterAsPointer(reg) => {
-                let addr = 0xFF00 | self.registers[reg] as u16;
-                mem.write(addr, value);
+                let addr = 0xFF00 | self.read_register(reg) as u16;
+                mem.write(addr, val);
             }
-            OPDest::RegisterPairAsPointer(high, low) => {
-                let addr = self.read_register_pair(high, low);
-                mem.write(addr, value);
+            OPDest::RegisterPairAsPointer(reg_pair) => {
+                let addr = self.read_register_pair(reg_pair);
+                mem.write(addr, val);
             }
             OPDest::PCImmediateAsPointer => {
                 let addr = 0xFF00 | self.fetch(mem) as u16;
-                mem.write(addr, value);
+                mem.write(addr, val);
             }
             OPDest::PCImmediateAsPointer16 => {
                 let addr = self.fetch_16(mem);
-                mem.write(addr, value);
+                mem.write(addr, val);
             }
         }
     }
@@ -187,14 +189,14 @@ impl CPU {
 
     fn read_op_src_16(&mut self, mem: &VirtualMemory, src: OPSrc16) -> u16 {
         match src {
-            OPSrc16::RegisterPair(high, low) => self.read_register_pair(high, low),
+            OPSrc16::RegisterPair(reg_pair) => self.read_register_pair(reg_pair),
             OPSrc16::PCImmediate16 => self.fetch_16(mem),
         }
     }
 
     fn write_op_dest_16(&mut self, dest: OPDest16, value: u16) {
         match dest {
-            OPDest16::RegisterPair(high, low) => self.write_register_pair(high, low, value),
+            OPDest16::RegisterPair(reg_pair) => self.write_register_pair(reg_pair, value),
             OPDest16::StackPointerRegister => self.sp = value,
         }
     }

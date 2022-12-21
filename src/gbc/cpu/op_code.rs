@@ -1,10 +1,10 @@
-use crate::gbc::cpu::register::Register;
+use super::register::{Register, RegisterPair};
 
 // Sources for reading 8 bit data
 pub enum OPSrc {
     Register(Register),
     RegisterAsPointer(Register),
-    RegisterPairAsPointer(Register, Register),
+    RegisterPairAsPointer(RegisterPair),
     PCImmediate,
     PCImmediateAsPointer,
     PCImmediateAsPointer16,
@@ -14,20 +14,20 @@ pub enum OPSrc {
 pub enum OPDest {
     Register(Register),
     RegisterAsPointer(Register),
-    RegisterPairAsPointer(Register, Register),
+    RegisterPairAsPointer(RegisterPair),
     PCImmediateAsPointer,
     PCImmediateAsPointer16,
 }
 
 // Sources for reading 16 bit data
 pub enum OPSrc16 {
-    RegisterPair(Register, Register),
+    RegisterPair(RegisterPair),
     PCImmediate16,
 }
 
 // Destinations for writing 16 bit data
 pub enum OPDest16 {
-    RegisterPair(Register, Register),
+    RegisterPair(RegisterPair),
     StackPointerRegister,
 }
 
@@ -276,132 +276,132 @@ pub fn parse_opcode(opcode: u8) -> Operation {
         0x46 => Operation {
             op: OperationType::LD(
                 OPDest::Register(Register::B),
-                OPSrc::RegisterPairAsPointer(Register::H, Register::L),
+                OPSrc::RegisterPairAsPointer(RegisterPair::HL),
             ),
             cycles: 2,
         },
         0x4E => Operation {
             op: OperationType::LD(
                 OPDest::Register(Register::C),
-                OPSrc::RegisterPairAsPointer(Register::H, Register::L),
+                OPSrc::RegisterPairAsPointer(RegisterPair::HL),
             ),
             cycles: 2,
         },
         0x56 => Operation {
             op: OperationType::LD(
                 OPDest::Register(Register::D),
-                OPSrc::RegisterPairAsPointer(Register::H, Register::L),
+                OPSrc::RegisterPairAsPointer(RegisterPair::HL),
             ),
             cycles: 2,
         },
         0x5E => Operation {
             op: OperationType::LD(
                 OPDest::Register(Register::E),
-                OPSrc::RegisterPairAsPointer(Register::H, Register::L),
+                OPSrc::RegisterPairAsPointer(RegisterPair::HL),
             ),
             cycles: 2,
         },
         0x66 => Operation {
             op: OperationType::LD(
                 OPDest::Register(Register::H),
-                OPSrc::RegisterPairAsPointer(Register::H, Register::L),
+                OPSrc::RegisterPairAsPointer(RegisterPair::HL),
             ),
             cycles: 2,
         },
         0x6E => Operation {
             op: OperationType::LD(
                 OPDest::Register(Register::L),
-                OPSrc::RegisterPairAsPointer(Register::H, Register::L),
+                OPSrc::RegisterPairAsPointer(RegisterPair::HL),
             ),
             cycles: 2,
         },
         0x7E => Operation {
             op: OperationType::LD(
                 OPDest::Register(Register::A),
-                OPSrc::RegisterPairAsPointer(Register::H, Register::L),
+                OPSrc::RegisterPairAsPointer(RegisterPair::HL),
             ),
             cycles: 2,
         },
         0x0A => Operation {
             op: OperationType::LD(
                 OPDest::Register(Register::A),
-                OPSrc::RegisterPairAsPointer(Register::B, Register::C),
+                OPSrc::RegisterPairAsPointer(RegisterPair::BC),
             ),
             cycles: 2,
         },
         0x1A => Operation {
             op: OperationType::LD(
                 OPDest::Register(Register::A),
-                OPSrc::RegisterPairAsPointer(Register::D, Register::E),
+                OPSrc::RegisterPairAsPointer(RegisterPair::DE),
             ),
             cycles: 2,
         },
         0x70 => Operation {
             op: OperationType::LD(
-                OPDest::RegisterPairAsPointer(Register::H, Register::L),
+                OPDest::RegisterPairAsPointer(RegisterPair::HL),
                 OPSrc::Register(Register::B),
             ),
             cycles: 2,
         },
         0x71 => Operation {
             op: OperationType::LD(
-                OPDest::RegisterPairAsPointer(Register::H, Register::L),
+                OPDest::RegisterPairAsPointer(RegisterPair::HL),
                 OPSrc::Register(Register::C),
             ),
             cycles: 2,
         },
         0x72 => Operation {
             op: OperationType::LD(
-                OPDest::RegisterPairAsPointer(Register::H, Register::L),
+                OPDest::RegisterPairAsPointer(RegisterPair::HL),
                 OPSrc::Register(Register::D),
             ),
             cycles: 2,
         },
         0x73 => Operation {
             op: OperationType::LD(
-                OPDest::RegisterPairAsPointer(Register::H, Register::L),
+                OPDest::RegisterPairAsPointer(RegisterPair::HL),
                 OPSrc::Register(Register::E),
             ),
             cycles: 2,
         },
         0x74 => Operation {
             op: OperationType::LD(
-                OPDest::RegisterPairAsPointer(Register::H, Register::L),
+                OPDest::RegisterPairAsPointer(RegisterPair::HL),
                 OPSrc::Register(Register::H),
             ),
             cycles: 2,
         },
         0x75 => Operation {
             op: OperationType::LD(
-                OPDest::RegisterPairAsPointer(Register::H, Register::L),
+                OPDest::RegisterPairAsPointer(RegisterPair::HL),
                 OPSrc::Register(Register::L),
             ),
             cycles: 2,
         },
         0x77 => Operation {
             op: OperationType::LD(
-                OPDest::RegisterPairAsPointer(Register::H, Register::L),
+                OPDest::RegisterPairAsPointer(RegisterPair::HL),
                 OPSrc::Register(Register::A),
             ),
             cycles: 2,
         },
         0x02 => Operation {
             op: OperationType::LD(
-                OPDest::RegisterPairAsPointer(Register::B, Register::C),
+                OPDest::RegisterPairAsPointer(RegisterPair::BC),
                 OPSrc::Register(Register::A),
             ),
             cycles: 2,
         },
         0x12 => Operation {
             op: OperationType::LD(
-                OPDest::RegisterPairAsPointer(Register::D, Register::E),
+                OPDest::RegisterPairAsPointer(RegisterPair::DE),
                 OPSrc::Register(Register::A),
             ),
             cycles: 2,
         },
         0x36 => Operation {
             op: OperationType::LD(
-                OPDest::RegisterPairAsPointer(Register::H, Register::L),
+                OPDest::RegisterPairAsPointer(RegisterPair::HL),
                 OPSrc::PCImmediate,
             ),
             cycles: 3,
@@ -439,48 +439,48 @@ pub fn parse_opcode(opcode: u8) -> Operation {
         0x2A => Operation {
             op: OperationType::LDAndIncrementSrc(
                 OPDest::Register(Register::A),
-                OPSrc::RegisterPairAsPointer(Register::H, Register::L),
+                OPSrc::RegisterPairAsPointer(RegisterPair::HL),
             ),
             cycles: 2,
         },
         0x3A => Operation {
             op: OperationType::LDAndDecrementSrc(
                 OPDest::Register(Register::A),
-                OPSrc::RegisterPairAsPointer(Register::H, Register::L),
+                OPSrc::RegisterPairAsPointer(RegisterPair::HL),
             ),
             cycles: 2,
         },
         0x22 => Operation {
             op: OperationType::LDAndIncrementDest(
-                OPDest::RegisterPairAsPointer(Register::H, Register::L),
+                OPDest::RegisterPairAsPointer(RegisterPair::HL),
                 OPSrc::Register(Register::A),
             ),
             cycles: 2,
         },
         0x32 => Operation {
             op: OperationType::LDAndDecrementDest(
-                OPDest::RegisterPairAsPointer(Register::H, Register::L),
+                OPDest::RegisterPairAsPointer(RegisterPair::HL),
                 OPSrc::Register(Register::A),
             ),
             cycles: 2,
         },
         0x01 => Operation {
             op: OperationType::LD16(
-                OPDest16::RegisterPair(Register::B, Register::C),
+                OPDest16::RegisterPair(RegisterPair::BC),
                 OPSrc16::PCImmediate16,
             ),
             cycles: 3,
         },
         0x11 => Operation {
             op: OperationType::LD16(
-                OPDest16::RegisterPair(Register::D, Register::E),
+                OPDest16::RegisterPair(RegisterPair::DE),
                 OPSrc16::PCImmediate16,
             ),
             cycles: 3,
         },
         0x21 => Operation {
             op: OperationType::LD16(
-                OPDest16::RegisterPair(Register::H, Register::L),
+                OPDest16::RegisterPair(RegisterPair::HL),
                 OPSrc16::PCImmediate16,
             ),
             cycles: 3,
@@ -492,40 +492,40 @@ pub fn parse_opcode(opcode: u8) -> Operation {
         0xF9 => Operation {
             op: OperationType::LD16(
                 OPDest16::StackPointerRegister,
-                OPSrc16::RegisterPair(Register::H, Register::L),
+                OPSrc16::RegisterPair(RegisterPair::HL),
             ),
             cycles: 2,
         },
         0xC5 => Operation {
-            op: OperationType::PUSH(OPSrc16::RegisterPair(Register::B, Register::C)),
+            op: OperationType::PUSH(OPSrc16::RegisterPair(RegisterPair::BC)),
             cycles: 4,
         },
         0xD5 => Operation {
-            op: OperationType::PUSH(OPSrc16::RegisterPair(Register::D, Register::E)),
+            op: OperationType::PUSH(OPSrc16::RegisterPair(RegisterPair::DE)),
             cycles: 4,
         },
         0xE5 => Operation {
-            op: OperationType::PUSH(OPSrc16::RegisterPair(Register::H, Register::L)),
+            op: OperationType::PUSH(OPSrc16::RegisterPair(RegisterPair::HL)),
             cycles: 4,
         },
         0xF5 => Operation {
-            op: OperationType::PUSH(OPSrc16::RegisterPair(Register::A, Register::F)),
+            op: OperationType::PUSH(OPSrc16::RegisterPair(RegisterPair::AF)),
             cycles: 4,
         },
         0xC1 => Operation {
-            op: OperationType::POP(OPDest16::RegisterPair(Register::B, Register::C)),
+            op: OperationType::POP(OPDest16::RegisterPair(RegisterPair::BC)),
             cycles: 3,
         },
         0xD1 => Operation {
-            op: OperationType::POP(OPDest16::RegisterPair(Register::D, Register::E)),
+            op: OperationType::POP(OPDest16::RegisterPair(RegisterPair::DE)),
             cycles: 3,
         },
         0xE1 => Operation {
-            op: OperationType::POP(OPDest16::RegisterPair(Register::H, Register::L)),
+            op: OperationType::POP(OPDest16::RegisterPair(RegisterPair::HL)),
             cycles: 3,
         },
         0xF1 => Operation {
-            op: OperationType::POP(OPDest16::RegisterPair(Register::A, Register::F)),
+            op: OperationType::POP(OPDest16::RegisterPair(RegisterPair::AF)),
             cycles: 3,
         },
         _ => panic!(),
