@@ -1,5 +1,59 @@
-use enum_map::{Enum, EnumMap};
+use enum_map::{enum_map, Enum, EnumMap};
 
+pub type RegisterMap = EnumMap<Register, u8>;
+
+pub trait RegisterMapMethods {
+    fn new() -> Self;
+    fn read(&self, register: Register) -> u8;
+    fn write(&mut self, register: Register, val: u8);
+    fn read_pair(&self, pair: RegisterPair) -> u16;
+    fn write_pair(&mut self, pair: RegisterPair, val: u16);
+}
+
+impl RegisterMapMethods for RegisterMap {
+    fn new() -> Self {
+        enum_map! {
+            Register::A => 0,
+            Register::F => 0,
+            Register::B => 0,
+            Register::C => 0,
+            Register::D => 0,
+            Register::E => 0,
+            Register::H => 0,
+            Register::L => 0
+        }
+    }
+
+    fn read(&self, register: Register) -> u8 {
+        self[register]
+    }
+
+    fn write(&mut self, register: Register, val: u8) {
+        self[register] = val;
+    }
+
+    fn read_pair(&self, pair: RegisterPair) -> u16 {
+        let (high, low) = map_register_pair_to_register(pair);
+        ((self.read(high) as u16) << 8) | self.read(low) as u16
+    }
+
+    fn write_pair(&mut self, pair: RegisterPair, val: u16) {
+        let (high, low) = map_register_pair_to_register(pair);
+        self.write(high, (val >> 8) as u8);
+        self.write(low, val as u8);
+    }
+}
+
+fn map_register_pair_to_register(pair: RegisterPair) -> (Register, Register) {
+    match pair {
+        RegisterPair::AF => (Register::A, Register::F),
+        RegisterPair::BC => (Register::B, Register::C),
+        RegisterPair::DE => (Register::D, Register::E),
+        RegisterPair::HL => (Register::H, Register::L),
+    }
+}
+
+#[derive(Enum)]
 pub enum Register {
     A,
     F,
@@ -11,61 +65,9 @@ pub enum Register {
     L,
 }
 
-pub struct RegisterPairData {
-    pub high: u8,
-    pub low: u8,
-}
-
-impl RegisterPairData {
-    pub fn read(&self) -> u16 {
-        ((self.high as u16) << 8) | self.low as u16
-    }
-
-    pub fn write(&mut self, val: u16) {
-        self.high = (val >> 8) as u8;
-        self.low = val as u8;
-    }
-}
-
-#[derive(Clone, Copy, Enum)]
 pub enum RegisterPair {
     AF,
     BC,
     DE,
     HL,
-}
-
-impl RegisterPair {
-    // Map individual register to register pair value
-    pub fn get_individual_register(
-        reg_map: &EnumMap<RegisterPair, RegisterPairData>,
-        register: Register,
-    ) -> &u8 {
-        match register {
-            Register::A => &reg_map[RegisterPair::AF].high,
-            Register::F => &reg_map[RegisterPair::AF].low,
-            Register::B => &reg_map[RegisterPair::BC].high,
-            Register::C => &reg_map[RegisterPair::BC].low,
-            Register::D => &reg_map[RegisterPair::DE].high,
-            Register::E => &reg_map[RegisterPair::DE].low,
-            Register::H => &reg_map[RegisterPair::HL].high,
-            Register::L => &reg_map[RegisterPair::HL].low,
-        }
-    }
-
-    pub fn get_individual_register_mut(
-        reg_map: &mut EnumMap<RegisterPair, RegisterPairData>,
-        register: Register,
-    ) -> &mut u8 {
-        match register {
-            Register::A => &mut reg_map[RegisterPair::AF].high,
-            Register::F => &mut reg_map[RegisterPair::AF].low,
-            Register::B => &mut reg_map[RegisterPair::BC].high,
-            Register::C => &mut reg_map[RegisterPair::BC].low,
-            Register::D => &mut reg_map[RegisterPair::DE].high,
-            Register::E => &mut reg_map[RegisterPair::DE].low,
-            Register::H => &mut reg_map[RegisterPair::HL].high,
-            Register::L => &mut reg_map[RegisterPair::HL].low,
-        }
-    }
 }
