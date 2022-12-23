@@ -2,8 +2,10 @@ mod instruction;
 mod instruction_impl;
 mod register;
 
+use bitmaps::Bitmap;
+
 use self::instruction::map_instruction;
-use self::register::{RegisterMap, RegisterMapMethods};
+use self::register::{RegisterMap, RegisterMapMethods, Register};
 use super::memory::{VirtualMemory, PROGRAM_START_ADDR};
 
 pub struct CPU {
@@ -35,88 +37,18 @@ impl CPU {
         self.fetch(mem) as u16 | ((self.fetch(mem) as u16) << 8)
     }
 
+    fn set_flags(&mut self, cy: bool, h: bool, n: bool, z: bool) {
+        let mut flags = Bitmap::<8>::new();
+        flags.set(7, cy);
+        flags.set(6, h);
+        flags.set(5, n);
+        flags.set(4, z);
+        self.registers.write(Register::F, flags.into_value());
+    }
+
     pub fn execute(&mut self, mem: &mut VirtualMemory) {
         let instruction = self.fetch(mem);
         let instruction_impl = map_instruction(instruction);
         instruction_impl(self, mem);
-        // match op {
-        //     // Load source into destination
-        //     OperationType::LD(dest, src) => self.ld(mem, dest, src),
-        //     // Load source into destination and increment the register pair used for src
-        //     OperationType::LDAndIncrementSrc(dest, src) => {
-        //         if let OPSrc::RegisterPairAsPointer(reg_pair) = src {
-        //             self.ld(mem, dest, src);
-        //             let new_hl = self.read_register_pair(reg_pair).wrapping_add(1);
-        //             self.write_register_pair(reg_pair, new_hl);
-        //         } else {
-        //             panic!("Operation only supported for register pair as pointer!")
-        //         }
-        //     }
-        //     // Load source into destination and decrement the register pair used for src
-        //     OperationType::LDAndDecrementSrc(dest, src) => {
-        //         if let OPSrc::RegisterPairAsPointer(reg_pair) = src {
-        //             self.ld(mem, dest, src);
-        //             let new_hl = self.read_register_pair(reg_pair).wrapping_sub(1);
-        //             self.write_register_pair(reg_pair, new_hl);
-        //         } else {
-        //             panic!("Operation only supported for register pair as pointer!")
-        //         }
-        //     }
-        //     // Load source into destination and increment the register pair used for dest
-        //     OperationType::LDAndIncrementDest(dest, src) => {
-        //         if let OPDest::RegisterPairAsPointer(reg_pair) = dest {
-        //             self.ld(mem, dest, src);
-        //             let new_hl = self.read_register_pair(reg_pair).wrapping_add(1);
-        //             self.write_register_pair(reg_pair, new_hl);
-        //         } else {
-        //             panic!("Operation only supported for register pair as pointer!")
-        //         }
-        //     }
-        //     // Load source into destination and decrement the register pair used for dest
-        //     OperationType::LDAndDecrementDest(dest, src) => {
-        //         if let OPDest::RegisterPairAsPointer(reg_pair) = dest {
-        //             self.ld(mem, dest, src);
-        //             let new_hl = self.read_register_pair(reg_pair).wrapping_add(1);
-        //             self.write_register_pair(reg_pair, new_hl);
-        //         } else {
-        //             panic!("Operation only supported for register pair as pointer!")
-        //         }
-        //     }
-        //     // Load 16 bit source into destination
-        //     OperationType::LD16(dest, src) => self.ld_16(mem, dest, src),
-        //     // Push src onto the stack
-        //     OperationType::PUSH(src) => {
-        //         let val = self.read_op_src_16(mem, src);
-        //         self.sp -= 1;
-        //         mem.write(self.sp, (val >> 8) as u8);
-        //         self.sp -= 1;
-        //         mem.write(self.sp, val as u8);
-        //     }
-        //     // Pop the stack
-        //     OperationType::POP(dest) => {
-        //         let val_low = mem.read(self.sp);
-        //         self.sp += 1;
-        //         let val_high = mem.read(self.sp);
-        //         self.sp += 1;
-        //         let val = (val_high as u16) << 8 | val_low as u16;
-        //         self.write_op_dest_16(dest, val);
-        //     }
-        //     // Add signed operand to Stack Pointer and store value in HL
-        //     OperationType::LDHL => {
-        //         // Be careful of data types and sign extensions in this operation!
-        //         let operand = self.fetch(mem) as i8;
-        //         let result = if (operand) >= 0 {
-        //             // Operand is positive so we can directly add it as u16
-        //             self.sp.wrapping_add(operand as u16)
-        //         } else {
-        //             // Sign extend operand to i16 then multiply by -1 to make it positive.
-        //             // Finally convert positive value to u16.
-        //             // We need to cast to i16 before multiply so value 128 doesn't overflow in i8
-        //             let pos_operand = ((operand as i16) * -1) as u16;
-        //             self.sp.wrapping_sub(pos_operand)
-        //         };
-        //         self.write_register_pair(RegisterPair::HL, result);
-        //     }
-        // };
     }
 }

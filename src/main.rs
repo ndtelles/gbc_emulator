@@ -1,4 +1,5 @@
 mod gbc;
+mod util;
 
 use crate::gbc::GBC;
 
