@@ -1,5 +1,7 @@
 use enum_map::{enum_map, Enum, EnumMap};
 
+use crate::util::index_bitmap;
+
 pub type RegisterMap = EnumMap<Register, u8>;
 
 pub trait RegisterMapMethods {
@@ -8,6 +10,8 @@ pub trait RegisterMapMethods {
     fn write(&mut self, register: Register, val: u8);
     fn read_pair(&self, pair: RegisterPair) -> u16;
     fn write_pair(&mut self, pair: RegisterPair, val: u16);
+    fn get_flags(&self) -> FlagRegister;
+    fn set_flags(&mut self, flags: &FlagRegister);
 }
 
 impl RegisterMapMethods for RegisterMap {
@@ -42,6 +46,14 @@ impl RegisterMapMethods for RegisterMap {
         self.write(high, (val >> 8) as u8);
         self.write(low, val as u8);
     }
+
+    fn get_flags(&self) -> FlagRegister {
+        FlagRegister::from(self.read(Register::F))
+    }
+
+    fn set_flags(&mut self, flags: &FlagRegister) {
+        self.write(Register::F, flags.into());
+    }
 }
 
 fn map_register_pair_to_register(pair: RegisterPair) -> (Register, Register) {
@@ -53,7 +65,7 @@ fn map_register_pair_to_register(pair: RegisterPair) -> (Register, Register) {
     }
 }
 
-#[derive(Enum)]
+#[derive(Clone, Copy, Enum)]
 pub enum Register {
     A,
     F,
@@ -65,9 +77,39 @@ pub enum Register {
     L,
 }
 
+#[derive(Clone, Copy)]
 pub enum RegisterPair {
     AF,
     BC,
     DE,
     HL,
+}
+
+pub struct FlagRegister {
+    pub z: bool,  // Set to 1 when the result of an operation is 0; otherwise reset
+    pub n: bool, // Set to 1 following execution of the subtraction instruction, regardless of the result
+    pub h: bool, // Set to 1 when an operation results in caryying from or borrowing to bit 3
+    pub cy: bool, // Set to 1 when an operation results in carrying from or borrowing to bit 7
+}
+
+impl From<u8> for FlagRegister {
+    fn from(val: u8) -> Self {
+        Self {
+            z: index_bitmap(val, 7),
+            n: index_bitmap(val, 6),
+            h: index_bitmap(val, 5),
+            cy: index_bitmap(val, 4),
+        }
+    }
+}
+
+impl Into<u8> for &FlagRegister {
+    fn into(self) -> u8 {
+        let mut flags = 0x00;
+        flags |= (self.z as u8) << 7;
+        flags |= (self.n as u8) << 6;
+        flags |= (self.h as u8) << 5;
+        flags |= (self.cy as u8) << 4;
+        flags
+    }
 }

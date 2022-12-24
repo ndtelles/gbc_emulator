@@ -9,12 +9,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "d468802bab17cbc0cc575e9b053f41e72aa36bfa6b7f55e3529ffa43161b97fa"
 
 [[package]]
-name = "bitmaps"
-version = "3.2.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "703642b98a00b3b90513279a8ede3fcfa479c126c5fb46e78f3051522f021403"
-
-[[package]]
 name = "enum-map"
 version = "2.4.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -38,7 +32,6 @@ dependencies = [
 name = "gbc_emulator"
 version = "0.1.0"
 dependencies = [
- "bitmaps",
  "enum-map",
  "num-traits",
 ]

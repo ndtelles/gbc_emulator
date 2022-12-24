@@ -7,5 +7,4 @@ edition = "2021"
 
 [dependencies]
 enum-map = "2.4.1"
-bitmaps = "3.2.0"
 num-traits = "0.2.15"

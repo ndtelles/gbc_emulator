@@ -1,104 +1,113 @@
-use bitmaps::Bitmap;
-
 use crate::{
     gbc::memory::VirtualMemory,
-    util::{add_and_get_carries, subtract_and_get_borrows},
+    util::{add_and_get_carries, index_bitmap, subtract_and_get_borrows},
 };
 
 use super::{
-    register::{Register, RegisterMapMethods, RegisterPair},
+    register::{FlagRegister, Register, RegisterMapMethods, RegisterPair},
     CPU,
 };
 
 #[allow(non_snake_case)]
 impl CPU {
     /**
-     * 8-bit transfer helpers
+     * 8-bit Transfer Helpers
      */
     // Load value from register to another register
-    fn ld_reg_from_reg(&mut self, dest: Register, src: Register) {
+    fn op_ld_reg_from_reg(&mut self, dest: Register, src: Register) {
         let val = self.registers.read(src);
         self.registers.write(dest, val);
     }
 
     // Load value from register pointer to another register
-    fn ld_reg_from_regptr(&mut self, dest: Register, src: Register, mem: &VirtualMemory) {
+    fn op_ld_reg_from_regptr(&mut self, dest: Register, src: Register, mem: &VirtualMemory) {
         let addr = 0xFF00 | (self.registers.read(src) as u16);
         let val = mem.read(addr);
         self.registers.write(dest, val);
     }
 
     // Load immediate u8 value from PC to register
-    fn ld_reg_from_u8(&mut self, dest: Register, mem: &VirtualMemory) {
+    fn op_ld_reg_from_u8(&mut self, dest: Register, mem: &VirtualMemory) {
         let val = self.fetch(mem);
         self.registers.write(dest, val);
     }
 
     // Load immediate u8 pointer from PC to register
-    fn ld_reg_from_u8ptr(&mut self, dest: Register, mem: &VirtualMemory) {
+    fn op_ld_reg_from_u8ptr(&mut self, dest: Register, mem: &VirtualMemory) {
         let addr = 0xFF00 | (self.fetch(mem) as u16);
         let val = mem.read(addr);
         self.registers.write(dest, val);
     }
 
     // Load immediate u16 pointer from PC to register
-    fn ld_reg_from_u16ptr(&mut self, dest: Register, mem: &VirtualMemory) {
+    fn op_ld_reg_from_u16ptr(&mut self, dest: Register, mem: &VirtualMemory) {
         let addr = self.fetch_16(mem);
         let val = mem.read(addr);
         self.registers.write(dest, val);
     }
 
     // Load register to immediate u8 pointer from PC
-    fn ld_u8ptr_from_reg(&mut self, src: Register, mem: &mut VirtualMemory) {
+    fn op_ld_u8ptr_from_reg(&mut self, src: Register, mem: &mut VirtualMemory) {
         let val = self.registers.read(src);
         let addr = 0xFF00 | (self.fetch(mem) as u16);
         mem.write(addr, val);
     }
 
     // Load register to immediate u16 pointer from PC
-    fn ld_u16ptr_from_reg(&mut self, src: Register, mem: &mut VirtualMemory) {
+    fn op_ld_u16ptr_from_reg(&mut self, src: Register, mem: &mut VirtualMemory) {
         let val = self.registers.read(src);
         let addr = self.fetch_16(mem);
         mem.write(addr, val);
     }
 
     // Load immediate u8 value from PC to register pair pointer
-    fn ld_regpairptr_from_u8(&mut self, dest: RegisterPair, mem: &mut VirtualMemory) {
+    fn op_ld_regpairptr_from_u8(&mut self, dest: RegisterPair, mem: &mut VirtualMemory) {
         let val = self.fetch(mem);
         let addr = self.registers.read_pair(dest);
         mem.write(addr, val);
     }
 
     // Load value at register pair pointer to register
-    fn ld_reg_from_regpairptr(&mut self, dest: Register, src: RegisterPair, mem: &VirtualMemory) {
+    fn op_ld_reg_from_regpairptr(
+        &mut self,
+        dest: Register,
+        src: RegisterPair,
+        mem: &VirtualMemory,
+    ) {
         let val = mem.read(self.registers.read_pair(src));
         self.registers.write(dest, val);
     }
 
     // Load value from register to register pair pointer
-    fn ld_regpairptr_from_reg(&self, dest: RegisterPair, src: Register, mem: &mut VirtualMemory) {
+    fn op_ld_regpairptr_from_reg(
+        &self,
+        dest: RegisterPair,
+        src: Register,
+        mem: &mut VirtualMemory,
+    ) {
         let val = self.registers.read(src);
         let addr = self.registers.read_pair(dest);
         mem.write(addr, val);
     }
 
     // Load value from register to register pointer
-    fn ld_regpptr_from_reg(&self, dest: Register, src: Register, mem: &mut VirtualMemory) {
+    fn op_ld_regpptr_from_reg(&self, dest: Register, src: Register, mem: &mut VirtualMemory) {
         let val = self.registers.read(src);
         let addr = 0xFF00 | (self.registers.read(dest) as u16);
         mem.write(addr, val);
     }
 
     /**
-     * 16-bit transfer helpers
+     * 16-bit Transfer Helpers
      */
     // Load immediate u16 value from PC to register pair
-    fn ld_registerpair_from_u16(&mut self, dest: RegisterPair, mem: &mut VirtualMemory) {
+    fn op_ld_registerpair_from_u16(&mut self, dest: RegisterPair, mem: &VirtualMemory) {
         let val = self.fetch_16(mem);
         self.registers.write_pair(dest, val);
     }
 
-    fn push_stack_from_regpair(&mut self, src: RegisterPair, mem: &mut VirtualMemory) {
+    // Push value from register pair to stack
+    fn op_push_stack_from_regpair(&mut self, src: RegisterPair, mem: &mut VirtualMemory) {
         let val = self.registers.read_pair(src);
         self.sp -= 1;
         // Write high byte
@@ -108,13 +117,36 @@ impl CPU {
         mem.write(self.sp, val as u8);
     }
 
-    fn pop_stack_to_regpair(&mut self, dest: RegisterPair, mem: &mut VirtualMemory) {
+    // Pop value from stack to register pair
+    fn op_pop_stack_to_regpair(&mut self, dest: RegisterPair, mem: &VirtualMemory) {
         let val_low = mem.read(self.sp) as u16;
         self.sp += 1;
         let val_high = (mem.read(self.sp) as u16) << 8;
         self.sp += 1;
         let val = val_high | val_low;
         self.registers.write_pair(dest, val);
+    }
+
+    /**
+     * 8-bit Arithmetic and Logical Operation Helpers
+     */
+    // Add source value to register A and set appropriate flags
+    fn op_add(&mut self, src_val: u8) {
+        let dest_val = self.registers.read(Register::A);
+        let (sum, carries) = add_and_get_carries(src_val, dest_val);
+        self.registers.write(Register::A, sum);
+
+        self.registers.set_flags(&FlagRegister {
+            z: sum == 0,
+            n: false,
+            h: index_bitmap(carries, 3),
+            cy: index_bitmap(carries, 7),
+        });
+    }
+
+    fn op_add_reg(&mut self, src: Register) {
+        let src_val = self.registers.read(src);
+        self.op_add(src_val);
     }
 
     /**
@@ -126,12 +158,12 @@ impl CPU {
 
     // LD BC, u16
     pub(super) fn instr_0x01(&mut self, mem: &mut VirtualMemory) {
-        self.ld_registerpair_from_u16(RegisterPair::BC, mem);
+        self.op_ld_registerpair_from_u16(RegisterPair::BC, mem);
     }
 
     // LD (BC), A
     pub(super) fn instr_0x02(&mut self, mem: &mut VirtualMemory) {
-        self.ld_regpairptr_from_reg(RegisterPair::BC, Register::A, mem);
+        self.op_ld_regpairptr_from_reg(RegisterPair::BC, Register::A, mem);
     }
 
     pub(super) fn instr_0x03(&mut self, _mem: &mut VirtualMemory) {
@@ -148,7 +180,7 @@ impl CPU {
 
     // LD B, u8
     pub(super) fn instr_0x06(&mut self, mem: &mut VirtualMemory) {
-        self.ld_reg_from_u8(Register::B, mem);
+        self.op_ld_reg_from_u8(Register::B, mem);
     }
 
     pub(super) fn instr_0x07(&mut self, _mem: &mut VirtualMemory) {
@@ -168,7 +200,7 @@ impl CPU {
 
     // LD A, (BC)
     pub(super) fn instr_0x0A(&mut self, mem: &mut VirtualMemory) {
-        self.ld_reg_from_regpairptr(Register::A, RegisterPair::BC, mem);
+        self.op_ld_reg_from_regpairptr(Register::A, RegisterPair::BC, mem);
     }
 
     pub(super) fn instr_0x0B(&mut self, _mem: &mut VirtualMemory) {
@@ -185,7 +217,7 @@ impl CPU {
 
     // LD C, u8
     pub(super) fn instr_0x0E(&mut self, mem: &mut VirtualMemory) {
-        self.ld_reg_from_u8(Register::C, mem);
+        self.op_ld_reg_from_u8(Register::C, mem);
     }
 
     pub(super) fn instr_0x0F(&mut self, _mem: &mut VirtualMemory) {
@@ -198,12 +230,12 @@ impl CPU {
 
     // LD DE, u16
     pub(super) fn instr_0x11(&mut self, mem: &mut VirtualMemory) {
-        self.ld_registerpair_from_u16(RegisterPair::DE, mem);
+        self.op_ld_registerpair_from_u16(RegisterPair::DE, mem);
     }
 
     // LD (DE), A
     pub(super) fn instr_0x12(&mut self, mem: &mut VirtualMemory) {
-        self.ld_reg_from_regpairptr(Register::A, RegisterPair::DE, mem);
+        self.op_ld_reg_from_regpairptr(Register::A, RegisterPair::DE, mem);
     }
 
     pub(super) fn instr_0x13(&mut self, _mem: &mut VirtualMemory) {
@@ -220,7 +252,7 @@ impl CPU {
 
     // LD D, u8
     pub(super) fn instr_0x16(&mut self, mem: &mut VirtualMemory) {
-        self.ld_reg_from_u8(Register::D, mem);
+        self.op_ld_reg_from_u8(Register::D, mem);
     }
 
     pub(super) fn instr_0x17(&mut self, _mem: &mut VirtualMemory) {
@@ -237,7 +269,7 @@ impl CPU {
 
     // LD A, (DE)
     pub(super) fn instr_0x1A(&mut self, mem: &mut VirtualMemory) {
-        self.ld_reg_from_regpairptr(Register::A, RegisterPair::DE, mem);
+        self.op_ld_reg_from_regpairptr(Register::A, RegisterPair::DE, mem);
     }
 
     pub(super) fn instr_0x1B(&mut self, _mem: &mut VirtualMemory) {
@@ -254,7 +286,7 @@ impl CPU {
 
     // LD E, u8
     pub(super) fn instr_0x1E(&mut self, mem: &mut VirtualMemory) {
-        self.ld_reg_from_u8(Register::E, mem);
+        self.op_ld_reg_from_u8(Register::E, mem);
     }
 
     pub(super) fn instr_0x1F(&mut self, _mem: &mut VirtualMemory) {
@@ -267,12 +299,12 @@ impl CPU {
 
     // LD HL, u16
     pub(super) fn instr_0x21(&mut self, mem: &mut VirtualMemory) {
-        self.ld_registerpair_from_u16(RegisterPair::HL, mem);
+        self.op_ld_registerpair_from_u16(RegisterPair::HL, mem);
     }
 
     // LD (HLI), A
     pub(super) fn instr_0x22(&mut self, mem: &mut VirtualMemory) {
-        self.ld_regpairptr_from_reg(RegisterPair::HL, Register::A, mem);
+        self.op_ld_regpairptr_from_reg(RegisterPair::HL, Register::A, mem);
         let new_hl = self.registers.read_pair(RegisterPair::HL).wrapping_add(1);
         self.registers.write_pair(RegisterPair::HL, new_hl);
     }
@@ -291,7 +323,7 @@ impl CPU {
 
     // LD H, u8
     pub(super) fn instr_0x26(&mut self, mem: &mut VirtualMemory) {
-        self.ld_reg_from_u8(Register::H, mem);
+        self.op_ld_reg_from_u8(Register::H, mem);
     }
 
     pub(super) fn instr_0x27(&mut self, _mem: &mut VirtualMemory) {
@@ -308,7 +340,7 @@ impl CPU {
 
     // LD A, (HLI)
     pub(super) fn instr_0x2A(&mut self, mem: &mut VirtualMemory) {
-        self.ld_reg_from_regpairptr(Register::A, RegisterPair::HL, mem);
+        self.op_ld_reg_from_regpairptr(Register::A, RegisterPair::HL, mem);
         let new_hl = self.registers.read_pair(RegisterPair::HL).wrapping_add(1);
         self.registers.write_pair(RegisterPair::HL, new_hl);
     }
@@ -327,7 +359,7 @@ impl CPU {
 
     // LD L, u8
     pub(super) fn instr_0x2E(&mut self, mem: &mut VirtualMemory) {
-        self.ld_reg_from_u8(Register::L, mem);
+        self.op_ld_reg_from_u8(Register::L, mem);
     }
 
     pub(super) fn instr_0x2F(&mut self, _mem: &mut VirtualMemory) {
@@ -345,7 +377,7 @@ impl CPU {
 
     // LD (HLD), A
     pub(super) fn instr_0x32(&mut self, mem: &mut VirtualMemory) {
-        self.ld_regpairptr_from_reg(RegisterPair::HL, Register::A, mem);
+        self.op_ld_regpairptr_from_reg(RegisterPair::HL, Register::A, mem);
         let new_hl = self.registers.read_pair(RegisterPair::HL).wrapping_sub(1);
         self.registers.write_pair(RegisterPair::HL, new_hl);
     }
@@ -364,7 +396,7 @@ impl CPU {
 
     // LD (HL), u8
     pub(super) fn instr_0x36(&mut self, mem: &mut VirtualMemory) {
-        self.ld_regpairptr_from_u8(RegisterPair::HL, mem);
+        self.op_ld_regpairptr_from_u8(RegisterPair::HL, mem);
     }
 
     pub(super) fn instr_0x37(&mut self, _mem: &mut VirtualMemory) {
@@ -381,7 +413,7 @@ impl CPU {
 
     // LD A, (HLD)
     pub(super) fn instr_0x3A(&mut self, mem: &mut VirtualMemory) {
-        self.ld_reg_from_regpairptr(Register::A, RegisterPair::HL, mem);
+        self.op_ld_reg_from_regpairptr(Register::A, RegisterPair::HL, mem);
         let new_hl = self.registers.read_pair(RegisterPair::HL).wrapping_sub(1);
         self.registers.write_pair(RegisterPair::HL, new_hl);
     }
@@ -400,7 +432,7 @@ impl CPU {
 
     // LD A, u8
     pub(super) fn instr_0x3E(&mut self, mem: &mut VirtualMemory) {
-        self.ld_reg_from_u8(Register::A, mem);
+        self.op_ld_reg_from_u8(Register::A, mem);
     }
 
     pub(super) fn instr_0x3F(&mut self, _mem: &mut VirtualMemory) {
@@ -409,272 +441,272 @@ impl CPU {
 
     // LD B, B
     pub(super) fn instr_0x40(&mut self, _mem: &mut VirtualMemory) {
-        self.ld_reg_from_reg(Register::B, Register::B);
+        self.op_ld_reg_from_reg(Register::B, Register::B);
     }
 
     // LD B, C
     pub(super) fn instr_0x41(&mut self, _mem: &mut VirtualMemory) {
-        self.ld_reg_from_reg(Register::B, Register::C);
+        self.op_ld_reg_from_reg(Register::B, Register::C);
     }
 
     // LD B, D
     pub(super) fn instr_0x42(&mut self, _mem: &mut VirtualMemory) {
-        self.ld_reg_from_reg(Register::B, Register::D);
+        self.op_ld_reg_from_reg(Register::B, Register::D);
     }
 
     // LD B, E
     pub(super) fn instr_0x43(&mut self, _mem: &mut VirtualMemory) {
-        self.ld_reg_from_reg(Register::B, Register::E);
+        self.op_ld_reg_from_reg(Register::B, Register::E);
     }
 
     // LD B, H
     pub(super) fn instr_0x44(&mut self, _mem: &mut VirtualMemory) {
-        self.ld_reg_from_reg(Register::B, Register::H);
+        self.op_ld_reg_from_reg(Register::B, Register::H);
     }
 
     // LD B, L
     pub(super) fn instr_0x45(&mut self, _mem: &mut VirtualMemory) {
-        self.ld_reg_from_reg(Register::B, Register::L);
+        self.op_ld_reg_from_reg(Register::B, Register::L);
     }
 
     // LD B, (HL)
     pub(super) fn instr_0x46(&mut self, mem: &mut VirtualMemory) {
-        self.ld_reg_from_regpairptr(Register::B, RegisterPair::HL, mem);
+        self.op_ld_reg_from_regpairptr(Register::B, RegisterPair::HL, mem);
     }
 
     // LD B, A
     pub(super) fn instr_0x47(&mut self, _mem: &mut VirtualMemory) {
-        self.ld_reg_from_reg(Register::B, Register::A);
+        self.op_ld_reg_from_reg(Register::B, Register::A);
     }
 
     // LD C, B
     pub(super) fn instr_0x48(&mut self, _mem: &mut VirtualMemory) {
-        self.ld_reg_from_reg(Register::C, Register::B);
+        self.op_ld_reg_from_reg(Register::C, Register::B);
     }
 
     // LD C, C
     pub(super) fn instr_0x49(&mut self, _mem: &mut VirtualMemory) {
-        self.ld_reg_from_reg(Register::C, Register::C);
+        self.op_ld_reg_from_reg(Register::C, Register::C);
     }
 
     // LD C, D
     pub(super) fn instr_0x4A(&mut self, _mem: &mut VirtualMemory) {
-        self.ld_reg_from_reg(Register::C, Register::D);
+        self.op_ld_reg_from_reg(Register::C, Register::D);
     }
 
     // LD C, E
     pub(super) fn instr_0x4B(&mut self, _mem: &mut VirtualMemory) {
-        self.ld_reg_from_reg(Register::C, Register::E);
+        self.op_ld_reg_from_reg(Register::C, Register::E);
     }
 
     // LD C, H
     pub(super) fn instr_0x4C(&mut self, _mem: &mut VirtualMemory) {
-        self.ld_reg_from_reg(Register::C, Register::H);
+        self.op_ld_reg_from_reg(Register::C, Register::H);
     }
 
     // LD C, L
     pub(super) fn instr_0x4D(&mut self, _mem: &mut VirtualMemory) {
-        self.ld_reg_from_reg(Register::C, Register::L);
+        self.op_ld_reg_from_reg(Register::C, Register::L);
     }
 
     // LD C, (HL)
     pub(super) fn instr_0x4E(&mut self, mem: &mut VirtualMemory) {
-        self.ld_reg_from_regpairptr(Register::C, RegisterPair::HL, mem);
+        self.op_ld_reg_from_regpairptr(Register::C, RegisterPair::HL, mem);
     }
 
     // LD C, A
     pub(super) fn instr_0x4F(&mut self, _mem: &mut VirtualMemory) {
-        self.ld_reg_from_reg(Register::C, Register::A);
+        self.op_ld_reg_from_reg(Register::C, Register::A);
     }
 
     // LD D, B
     pub(super) fn instr_0x50(&mut self, _mem: &mut VirtualMemory) {
-        self.ld_reg_from_reg(Register::D, Register::B);
+        self.op_ld_reg_from_reg(Register::D, Register::B);
     }
 
     // LD D, C
     pub(super) fn instr_0x51(&mut self, _mem: &mut VirtualMemory) {
-        self.ld_reg_from_reg(Register::D, Register::C);
+        self.op_ld_reg_from_reg(Register::D, Register::C);
     }
 
     // LD D, D
     pub(super) fn instr_0x52(&mut self, _mem: &mut VirtualMemory) {
-        self.ld_reg_from_reg(Register::D, Register::D);
+        self.op_ld_reg_from_reg(Register::D, Register::D);
     }
 
     // LD D, E
     pub(super) fn instr_0x53(&mut self, _mem: &mut VirtualMemory) {
-        self.ld_reg_from_reg(Register::D, Register::E);
+        self.op_ld_reg_from_reg(Register::D, Register::E);
     }
 
     // LD D, H
     pub(super) fn instr_0x54(&mut self, _mem: &mut VirtualMemory) {
-        self.ld_reg_from_reg(Register::D, Register::H);
+        self.op_ld_reg_from_reg(Register::D, Register::H);
     }
 
     // LD D, L
     pub(super) fn instr_0x55(&mut self, _mem: &mut VirtualMemory) {
-        self.ld_reg_from_reg(Register::D, Register::L);
+        self.op_ld_reg_from_reg(Register::D, Register::L);
     }
 
     // LD D, (HL)
     pub(super) fn instr_0x56(&mut self, mem: &mut VirtualMemory) {
-        self.ld_reg_from_regpairptr(Register::D, RegisterPair::HL, mem);
+        self.op_ld_reg_from_regpairptr(Register::D, RegisterPair::HL, mem);
     }
 
     // LD D, A
     pub(super) fn instr_0x57(&mut self, _mem: &mut VirtualMemory) {
-        self.ld_reg_from_reg(Register::D, Register::A);
+        self.op_ld_reg_from_reg(Register::D, Register::A);
     }
 
     // LD E, B
     pub(super) fn instr_0x58(&mut self, _mem: &mut VirtualMemory) {
-        self.ld_reg_from_reg(Register::E, Register::B);
+        self.op_ld_reg_from_reg(Register::E, Register::B);
     }
 
     // LD E, C
     pub(super) fn instr_0x59(&mut self, _mem: &mut VirtualMemory) {
-        self.ld_reg_from_reg(Register::E, Register::C);
+        self.op_ld_reg_from_reg(Register::E, Register::C);
     }
 
     // LD E, D
     pub(super) fn instr_0x5A(&mut self, _mem: &mut VirtualMemory) {
-        self.ld_reg_from_reg(Register::E, Register::D);
+        self.op_ld_reg_from_reg(Register::E, Register::D);
     }
 
     // LD E, E
     pub(super) fn instr_0x5B(&mut self, _mem: &mut VirtualMemory) {
-        self.ld_reg_from_reg(Register::E, Register::E);
+        self.op_ld_reg_from_reg(Register::E, Register::E);
     }
 
     // LD E, H
     pub(super) fn instr_0x5C(&mut self, _mem: &mut VirtualMemory) {
-        self.ld_reg_from_reg(Register::E, Register::H);
+        self.op_ld_reg_from_reg(Register::E, Register::H);
     }
 
     // LD E, L
     pub(super) fn instr_0x5D(&mut self, _mem: &mut VirtualMemory) {
-        self.ld_reg_from_reg(Register::E, Register::L);
+        self.op_ld_reg_from_reg(Register::E, Register::L);
     }
 
     // LD E, (HL)
     pub(super) fn instr_0x5E(&mut self, mem: &mut VirtualMemory) {
-        self.ld_reg_from_regpairptr(Register::E, RegisterPair::HL, mem);
+        self.op_ld_reg_from_regpairptr(Register::E, RegisterPair::HL, mem);
     }
 
     // LD E, A
     pub(super) fn instr_0x5F(&mut self, _mem: &mut VirtualMemory) {
-        self.ld_reg_from_reg(Register::E, Register::A);
+        self.op_ld_reg_from_reg(Register::E, Register::A);
     }
 
     // LD H, B
     pub(super) fn instr_0x60(&mut self, _mem: &mut VirtualMemory) {
-        self.ld_reg_from_reg(Register::H, Register::B);
+        self.op_ld_reg_from_reg(Register::H, Register::B);
     }
 
     // LD H, C
     pub(super) fn instr_0x61(&mut self, _mem: &mut VirtualMemory) {
-        self.ld_reg_from_reg(Register::H, Register::C);
+        self.op_ld_reg_from_reg(Register::H, Register::C);
     }
 
     // LD H, D
     pub(super) fn instr_0x62(&mut self, _mem: &mut VirtualMemory) {
-        self.ld_reg_from_reg(Register::H, Register::D);
+        self.op_ld_reg_from_reg(Register::H, Register::D);
     }
 
     // LD H, E
     pub(super) fn instr_0x63(&mut self, _mem: &mut VirtualMemory) {
-        self.ld_reg_from_reg(Register::H, Register::E);
+        self.op_ld_reg_from_reg(Register::H, Register::E);
     }
 
     // LD H, H
     pub(super) fn instr_0x64(&mut self, _mem: &mut VirtualMemory) {
-        self.ld_reg_from_reg(Register::H, Register::H);
+        self.op_ld_reg_from_reg(Register::H, Register::H);
     }
 
     // LD H, L
     pub(super) fn instr_0x65(&mut self, _mem: &mut VirtualMemory) {
-        self.ld_reg_from_reg(Register::H, Register::L);
+        self.op_ld_reg_from_reg(Register::H, Register::L);
     }
 
     // LD H, (HL)
     pub(super) fn instr_0x66(&mut self, mem: &mut VirtualMemory) {
-        self.ld_reg_from_regpairptr(Register::H, RegisterPair::HL, mem);
+        self.op_ld_reg_from_regpairptr(Register::H, RegisterPair::HL, mem);
     }
 
     // LD H, A
     pub(super) fn instr_0x67(&mut self, _mem: &mut VirtualMemory) {
-        self.ld_reg_from_reg(Register::H, Register::A);
+        self.op_ld_reg_from_reg(Register::H, Register::A);
     }
 
     // LD L, B
     pub(super) fn instr_0x68(&mut self, _mem: &mut VirtualMemory) {
-        self.ld_reg_from_reg(Register::L, Register::B);
+        self.op_ld_reg_from_reg(Register::L, Register::B);
     }
 
     // LD L, C
     pub(super) fn instr_0x69(&mut self, _mem: &mut VirtualMemory) {
-        self.ld_reg_from_reg(Register::L, Register::C);
+        self.op_ld_reg_from_reg(Register::L, Register::C);
     }
 
     // LD L, D
     pub(super) fn instr_0x6A(&mut self, _mem: &mut VirtualMemory) {
-        self.ld_reg_from_reg(Register::L, Register::D);
+        self.op_ld_reg_from_reg(Register::L, Register::D);
     }
 
     // LD L, E
     pub(super) fn instr_0x6B(&mut self, _mem: &mut VirtualMemory) {
-        self.ld_reg_from_reg(Register::L, Register::E);
+        self.op_ld_reg_from_reg(Register::L, Register::E);
     }
 
     // LD L, H
     pub(super) fn instr_0x6C(&mut self, _mem: &mut VirtualMemory) {
-        self.ld_reg_from_reg(Register::L, Register::H);
+        self.op_ld_reg_from_reg(Register::L, Register::H);
     }
 
     // LD L, L
     pub(super) fn instr_0x6D(&mut self, _mem: &mut VirtualMemory) {
-        self.ld_reg_from_reg(Register::L, Register::L);
+        self.op_ld_reg_from_reg(Register::L, Register::L);
     }
 
     // LD L, (HL)
     pub(super) fn instr_0x6E(&mut self, mem: &mut VirtualMemory) {
-        self.ld_reg_from_regpairptr(Register::L, RegisterPair::HL, mem);
+        self.op_ld_reg_from_regpairptr(Register::L, RegisterPair::HL, mem);
     }
 
     // LD L, A
     pub(super) fn instr_0x6F(&mut self, _mem: &mut VirtualMemory) {
-        self.ld_reg_from_reg(Register::L, Register::A);
+        self.op_ld_reg_from_reg(Register::L, Register::A);
     }
 
     // LD (HL). B
     pub(super) fn instr_0x70(&mut self, mem: &mut VirtualMemory) {
-        self.ld_regpairptr_from_reg(RegisterPair::HL, Register::B, mem);
+        self.op_ld_regpairptr_from_reg(RegisterPair::HL, Register::B, mem);
     }
 
     // LD (HL). C
     pub(super) fn instr_0x71(&mut self, mem: &mut VirtualMemory) {
-        self.ld_regpairptr_from_reg(RegisterPair::HL, Register::C, mem);
+        self.op_ld_regpairptr_from_reg(RegisterPair::HL, Register::C, mem);
     }
 
     // LD (HL). D
     pub(super) fn instr_0x72(&mut self, mem: &mut VirtualMemory) {
-        self.ld_regpairptr_from_reg(RegisterPair::HL, Register::D, mem);
+        self.op_ld_regpairptr_from_reg(RegisterPair::HL, Register::D, mem);
     }
 
     // LD (HL). E
     pub(super) fn instr_0x73(&mut self, mem: &mut VirtualMemory) {
-        self.ld_regpairptr_from_reg(RegisterPair::HL, Register::E, mem);
+        self.op_ld_regpairptr_from_reg(RegisterPair::HL, Register::E, mem);
     }
 
     // LD (HL). H
     pub(super) fn instr_0x74(&mut self, mem: &mut VirtualMemory) {
-        self.ld_regpairptr_from_reg(RegisterPair::HL, Register::H, mem);
+        self.op_ld_regpairptr_from_reg(RegisterPair::HL, Register::H, mem);
     }
 
     // LD (HL). L
     pub(super) fn instr_0x75(&mut self, mem: &mut VirtualMemory) {
-        self.ld_regpairptr_from_reg(RegisterPair::HL, Register::L, mem);
+        self.op_ld_regpairptr_from_reg(RegisterPair::HL, Register::L, mem);
     }
 
     pub(super) fn instr_0x76(&mut self, _mem: &mut VirtualMemory) {
@@ -683,79 +715,89 @@ impl CPU {
 
     // LD (HL), A
     pub(super) fn instr_0x77(&mut self, mem: &mut VirtualMemory) {
-        self.ld_regpairptr_from_reg(RegisterPair::HL, Register::A, mem);
+        self.op_ld_regpairptr_from_reg(RegisterPair::HL, Register::A, mem);
     }
 
     // LD A, B
     pub(super) fn instr_0x78(&mut self, _mem: &mut VirtualMemory) {
-        self.ld_reg_from_reg(Register::A, Register::B);
+        self.op_ld_reg_from_reg(Register::A, Register::B);
     }
 
     // LD A, C
     pub(super) fn instr_0x79(&mut self, _mem: &mut VirtualMemory) {
-        self.ld_reg_from_reg(Register::A, Register::C);
+        self.op_ld_reg_from_reg(Register::A, Register::C);
     }
 
     // LD A, D
     pub(super) fn instr_0x7A(&mut self, _mem: &mut VirtualMemory) {
-        self.ld_reg_from_reg(Register::A, Register::D);
+        self.op_ld_reg_from_reg(Register::A, Register::D);
     }
 
     // LD A, E
     pub(super) fn instr_0x7B(&mut self, _mem: &mut VirtualMemory) {
-        self.ld_reg_from_reg(Register::A, Register::E);
+        self.op_ld_reg_from_reg(Register::A, Register::E);
     }
 
     // LD A, H
     pub(super) fn instr_0x7C(&mut self, _mem: &mut VirtualMemory) {
-        self.ld_reg_from_reg(Register::A, Register::H);
+        self.op_ld_reg_from_reg(Register::A, Register::H);
     }
 
     // LD A, L
     pub(super) fn instr_0x7D(&mut self, _mem: &mut VirtualMemory) {
-        self.ld_reg_from_reg(Register::A, Register::L);
+        self.op_ld_reg_from_reg(Register::A, Register::L);
     }
 
     // LD A, (HL)
     pub(super) fn instr_0x7E(&mut self, mem: &mut VirtualMemory) {
-        self.ld_reg_from_regpairptr(Register::A, RegisterPair::HL, mem);
+        self.op_ld_reg_from_regpairptr(Register::A, RegisterPair::HL, mem);
     }
 
     // LD A, A
     pub(super) fn instr_0x7F(&mut self, _mem: &mut VirtualMemory) {
-        self.ld_reg_from_reg(Register::A, Register::A);
+        self.op_ld_reg_from_reg(Register::A, Register::A);
     }
 
+    // ADD A, B
     pub(super) fn instr_0x80(&mut self, _mem: &mut VirtualMemory) {
-        todo!();
+        self.op_add_reg(Register::B);
     }
 
+    // Add A, C
     pub(super) fn instr_0x81(&mut self, _mem: &mut VirtualMemory) {
-        todo!();
+        self.op_add_reg(Register::C);
     }
 
+    // Add A, D
     pub(super) fn instr_0x82(&mut self, _mem: &mut VirtualMemory) {
-        todo!();
+        self.op_add_reg(Register::D);
     }
 
+    // Add A, E
     pub(super) fn instr_0x83(&mut self, _mem: &mut VirtualMemory) {
-        todo!();
+        self.op_add_reg(Register::E);
     }
 
+    // Add A, H
     pub(super) fn instr_0x84(&mut self, _mem: &mut VirtualMemory) {
-        todo!();
+        self.op_add_reg(Register::H);
     }
 
+    // Add A, L
     pub(super) fn instr_0x85(&mut self, _mem: &mut VirtualMemory) {
-        todo!();
+        self.op_add_reg(Register::L);
     }
 
-    pub(super) fn instr_0x86(&mut self, _mem: &mut VirtualMemory) {
-        todo!();
+    // ADD A, (HL)
+    pub(super) fn instr_0x86(&mut self, mem: &mut VirtualMemory) {
+        let addr = self.registers.read_pair(RegisterPair::HL);
+        let val = mem.read(addr);
+        self.op_add(val);
     }
 
+    // Add A, A
     pub(super) fn instr_0x87(&mut self, _mem: &mut VirtualMemory) {
-        todo!();
+        self.op_add_reg(Register::A);
     }
 
     pub(super) fn instr_0x88(&mut self, _mem: &mut VirtualMemory) {
@@ -988,7 +1030,7 @@ impl CPU {
 
     // POP BC
     pub(super) fn instr_0xC1(&mut self, mem: &mut VirtualMemory) {
-        self.pop_stack_to_regpair(RegisterPair::BC, mem);
+        self.op_pop_stack_to_regpair(RegisterPair::BC, mem);
     }
 
     pub(super) fn instr_0xC2(&mut self, _mem: &mut VirtualMemory) {
@@ -1005,11 +1047,13 @@ impl CPU {
 
     // PUSH BC
     pub(super) fn instr_0xC5(&mut self, mem: &mut VirtualMemory) {
-        self.push_stack_from_regpair(RegisterPair::BC, mem);
+        self.op_push_stack_from_regpair(RegisterPair::BC, mem);
     }
 
-    pub(super) fn instr_0xC6(&mut self, _mem: &mut VirtualMemory) {
-        todo!();
+    // ADD A, u8
+    pub(super) fn instr_0xC6(&mut self, mem: &mut VirtualMemory) {
+        let src_val = self.fetch(mem) as u8;
+        self.op_add(src_val);
     }
 
     pub(super) fn instr_0xC7(&mut self, _mem: &mut VirtualMemory) {
@@ -1054,7 +1098,7 @@ impl CPU {
 
     // POP DE
     pub(super) fn instr_0xD1(&mut self, mem: &mut VirtualMemory) {
-        self.pop_stack_to_regpair(RegisterPair::DE, mem);
+        self.op_pop_stack_to_regpair(RegisterPair::DE, mem);
     }
 
     pub(super) fn instr_0xD2(&mut self, _mem: &mut VirtualMemory) {
@@ -1071,7 +1115,7 @@ impl CPU {
 
     // PUSH DE
     pub(super) fn instr_0xD5(&mut self, mem: &mut VirtualMemory) {
-        self.push_stack_from_regpair(RegisterPair::DE, mem);
+        self.op_push_stack_from_regpair(RegisterPair::DE, mem);
     }
 
     pub(super) fn instr_0xD6(&mut self, _mem: &mut VirtualMemory) {
@@ -1116,17 +1160,17 @@ impl CPU {
 
     // LD (u8), A
     pub(super) fn instr_0xE0(&mut self, mem: &mut VirtualMemory) {
-        self.ld_u8ptr_from_reg(Register::A, mem);
+        self.op_ld_u8ptr_from_reg(Register::A, mem);
     }
 
     // POP HL
     pub(super) fn instr_0xE1(&mut self, mem: &mut VirtualMemory) {
-        self.pop_stack_to_regpair(RegisterPair::HL, mem);
+        self.op_pop_stack_to_regpair(RegisterPair::HL, mem);
     }
 
     // LD (C), A
     pub(super) fn instr_0xE2(&mut self, mem: &mut VirtualMemory) {
-        self.ld_regpptr_from_reg(Register::C, Register::A, mem);
+        self.op_ld_regpptr_from_reg(Register::C, Register::A, mem);
     }
 
     pub(super) fn instr_0xE3(&mut self, _mem: &mut VirtualMemory) {
@@ -1139,7 +1183,7 @@ impl CPU {
 
     // PUSH HL
     pub(super) fn instr_0xE5(&mut self, mem: &mut VirtualMemory) {
-        self.push_stack_from_regpair(RegisterPair::HL, mem);
+        self.op_push_stack_from_regpair(RegisterPair::HL, mem);
     }
 
     pub(super) fn instr_0xE6(&mut self, _mem: &mut VirtualMemory) {
@@ -1160,7 +1204,7 @@ impl CPU {
 
     // LD (u16), A
     pub(super) fn instr_0xEA(&mut self, mem: &mut VirtualMemory) {
-        self.ld_u16ptr_from_reg(Register::A, mem);
+        self.op_ld_u16ptr_from_reg(Register::A, mem);
     }
 
     pub(super) fn instr_0xEB(&mut self, _mem: &mut VirtualMemory) {
@@ -1185,17 +1229,17 @@ impl CPU {
 
     // LD A, (u8)
     pub(super) fn instr_0xF0(&mut self, mem: &mut VirtualMemory) {
-        self.ld_reg_from_u8ptr(Register::A, mem);
+        self.op_ld_reg_from_u8ptr(Register::A, mem);
     }
 
     // POP AF
     pub(super) fn instr_0xF1(&mut self, mem: &mut VirtualMemory) {
-        self.pop_stack_to_regpair(RegisterPair::AF, mem);
+        self.op_pop_stack_to_regpair(RegisterPair::AF, mem);
     }
 
     // LD A, (C)
     pub(super) fn instr_0xF2(&mut self, mem: &mut VirtualMemory) {
-        self.ld_reg_from_regptr(Register::A, Register::C, mem);
+        self.op_ld_reg_from_regptr(Register::A, Register::C, mem);
     }
 
     pub(super) fn instr_0xF3(&mut self, _mem: &mut VirtualMemory) {
@@ -1208,7 +1252,7 @@ impl CPU {
 
     // PUSH AF
     pub(super) fn instr_0xF5(&mut self, mem: &mut VirtualMemory) {
-        self.push_stack_from_regpair(RegisterPair::AF, mem);
+        self.op_push_stack_from_regpair(RegisterPair::AF, mem);
     }
 
     pub(super) fn instr_0xF6(&mut self, _mem: &mut VirtualMemory) {
@@ -1223,22 +1267,21 @@ impl CPU {
     pub(super) fn instr_0xF8(&mut self, mem: &mut VirtualMemory) {
         // Be careful of data types and sign extensions in this operation!
         let operand = self.fetch(mem) as i8;
-        let (result, carries_or_borrows) = if (operand) >= 0 {
-            add_and_get_carries(self.sp, operand as u16)
-        } else {
+        let (result, carries_or_borrows) = if operand.is_negative() {
             // Sign extend operand to i16 then multiply by -1 to make it positive.
-            // Finally convert positive value to u16.
-            // We need to cast to i16 before multiply so value 128 doesn't overflow in i8
+            // Finally convert positive value to u16. We need to cast to i16 before
+            // multiply so value 128 doesn't overflow in i8. Yaaay Rust -_-
             subtract_and_get_borrows(self.sp, ((operand as i16) * -1) as u16)
+        } else {
+            add_and_get_carries(self.sp, operand as u16)
         };
         self.registers.write_pair(RegisterPair::HL, result);
-        let carries_or_borrows = Bitmap::<16>::from_value(carries_or_borrows);
-        self.set_flags(
-            carries_or_borrows.get(15),
-            carries_or_borrows.get(11),
-            false,
-            false,
-        );
+        self.registers.set_flags(&FlagRegister {
+            z: false,
+            n: false,
+            h: index_bitmap(carries_or_borrows, 11),
+            cy: index_bitmap(carries_or_borrows, 15),
+        });
     }
 
     // LD SP, HL
@@ -1248,7 +1291,7 @@ impl CPU {
 
     // LD A, (u16)
     pub(super) fn instr_0xFA(&mut self, mem: &mut VirtualMemory) {
-        self.ld_reg_from_u16ptr(Register::A, mem);
+        self.op_ld_reg_from_u16ptr(Register::A, mem);
     }
 
     pub(super) fn instr_0xFB(&mut self, _mem: &mut VirtualMemory) {
