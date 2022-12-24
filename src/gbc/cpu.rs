@@ -24,19 +24,19 @@ impl CPU {
     }
 
     // Fetch next 8 bits at program counter
-    fn fetch(&mut self, mem: &VirtualMemory) -> u8 {
+    fn fetch_and_incr_pc(&mut self, mem: &VirtualMemory) -> u8 {
         let data = mem.read(self.pc);
         self.pc += 1;
         data
     }
 
     // Fetch next 16 bits (little endian) at program counter. Return as big endian
-    fn fetch_16(&mut self, mem: &VirtualMemory) -> u16 {
-        self.fetch(mem) as u16 | ((self.fetch(mem) as u16) << 8)
+    fn fetch_and_incr_pc_16(&mut self, mem: &VirtualMemory) -> u16 {
+        self.fetch_and_incr_pc(mem) as u16 | ((self.fetch_and_incr_pc(mem) as u16) << 8)
     }
 
     pub fn execute(&mut self, mem: &mut VirtualMemory) {
-        let instruction = self.fetch(mem);
+        let instruction = self.fetch_and_incr_pc(mem);
         let instruction_impl = map_instruction(instruction);
         instruction_impl(self, mem);
     }

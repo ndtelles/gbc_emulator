@@ -28,20 +28,20 @@ impl CPU {
 
     // Load immediate u8 value from PC to register
     fn op_ld_reg_from_u8(&mut self, dest: Register, mem: &VirtualMemory) {
-        let val = self.fetch(mem);
+        let val = self.fetch_and_incr_pc(mem);
         self.registers.write(dest, val);
     }
 
     // Load immediate u8 pointer from PC to register
     fn op_ld_reg_from_u8ptr(&mut self, dest: Register, mem: &VirtualMemory) {
-        let addr = 0xFF00 | (self.fetch(mem) as u16);
+        let addr = 0xFF00 | (self.fetch_and_incr_pc(mem) as u16);
         let val = mem.read(addr);
         self.registers.write(dest, val);
     }
 
     // Load immediate u16 pointer from PC to register
     fn op_ld_reg_from_u16ptr(&mut self, dest: Register, mem: &VirtualMemory) {
-        let addr = self.fetch_16(mem);
+        let addr = self.fetch_and_incr_pc_16(mem);
         let val = mem.read(addr);
         self.registers.write(dest, val);
     }
@@ -49,20 +49,20 @@ impl CPU {
     // Load register to immediate u8 pointer from PC
     fn op_ld_u8ptr_from_reg(&mut self, src: Register, mem: &mut VirtualMemory) {
         let val = self.registers.read(src);
-        let addr = 0xFF00 | (self.fetch(mem) as u16);
+        let addr = 0xFF00 | (self.fetch_and_incr_pc(mem) as u16);
         mem.write(addr, val);
     }
 
     // Load register to immediate u16 pointer from PC
     fn op_ld_u16ptr_from_reg(&mut self, src: Register, mem: &mut VirtualMemory) {
         let val = self.registers.read(src);
-        let addr = self.fetch_16(mem);
+        let addr = self.fetch_and_incr_pc_16(mem);
         mem.write(addr, val);
     }
 
     // Load immediate u8 value from PC to register pair pointer
     fn op_ld_regpairptr_from_u8(&mut self, dest: RegisterPair, mem: &mut VirtualMemory) {
-        let val = self.fetch(mem);
+        let val = self.fetch_and_incr_pc(mem);
         let addr = self.registers.read_pair(dest);
         mem.write(addr, val);
     }
@@ -102,7 +102,7 @@ impl CPU {
      */
     // Load immediate u16 value from PC to register pair
     fn op_ld_registerpair_from_u16(&mut self, dest: RegisterPair, mem: &VirtualMemory) {
-        let val = self.fetch_16(mem);
+        let val = self.fetch_and_incr_pc_16(mem);
         self.registers.write_pair(dest, val);
     }
 
@@ -130,10 +130,10 @@ impl CPU {
     /**
      * 8-bit Arithmetic and Logical Operation Helpers
      */
-    // Add source value to register A and set appropriate flags
-    fn op_add(&mut self, src_val: u8) {
-        let dest_val = self.registers.read(Register::A);
-        let (sum, carries) = add_and_get_carries(src_val, dest_val);
+    // Add value to register A and set appropriate flags
+    fn op_add(&mut self, val: u8) {
+        let a_val = self.registers.read(Register::A);
+        let (sum, carries) = add_and_get_carries(a_val, val);
         self.registers.write(Register::A, sum);
 
         self.registers.set_flags(&FlagRegister {
@@ -144,9 +144,53 @@ impl CPU {
         });
     }
 
+    // Add register to register A and set appropriate flags
     fn op_add_reg(&mut self, src: Register) {
-        let src_val = self.registers.read(src);
-        self.op_add(src_val);
+        let val = self.registers.read(src);
+        self.op_add(val);
+    }
+
+    // Add value and carry bit to register A and set appropriate flags
+    fn op_adc(&mut self, val: u8) {
+        let carry = self.registers.get_flags().cy as u8;
+        self.op_add(val.wrapping_add(carry));
+    }
+
+    // Add value and carry bit to register A and set appropriate flags
+    fn op_adc_reg(&mut self, src: Register) {
+        let val = self.registers.read(src);
+        self.op_adc(val);
+    }
+
+    // Subtract value from register A and set appropriate flags
+    fn op_sub(&mut self, val: u8) {
+        let a_val = self.registers.read(Register::A);
+        let (diff, borrows) = subtract_and_get_borrows(a_val, val);
+        self.registers.write(Register::A, diff);
+
+        self.registers.set_flags(&FlagRegister {
+            z: diff == 0,
+            n: true,
+            h: index_bitmap(borrows, 3),
+            cy: index_bitmap(borrows, 7),
+        });
+    }
+
+    // Subtract register from register A and set appropriate flags
+    fn op_sub_reg(&mut self, src: Register) {
+        let val = self.registers.read(src);
+        self.op_sub(val);
+    }
+
+    // Subtract value and carry bit from register A and set appropriate flags
+    fn op_sbc(&mut self, val: u8) {
+        let carry = self.registers.get_flags().cy as u8;
+        self.op_sub(val.wrapping_add(carry));
+    }
+
+    fn op_sbc_reg(&mut self, src: Register) {
+        let val = self.registers.read(src);
+        self.op_sbc(val);
     }
 
     /**
@@ -189,7 +233,7 @@ impl CPU {
 
     // LD (u16), SP
     pub(super) fn instr_0x08(&mut self, mem: &mut VirtualMemory) {
-        let addr = self.fetch_16(mem);
+        let addr = self.fetch_and_incr_pc_16(mem);
         mem.write(addr, self.sp as u8);
         mem.write(addr + 1, (self.sp >> 8) as u8);
     }
@@ -372,7 +416,7 @@ impl CPU {
 
     // LD SP, u16
     pub(super) fn instr_0x31(&mut self, mem: &mut VirtualMemory) {
-        self.sp = self.fetch_16(mem);
+        self.sp = self.fetch_and_incr_pc_16(mem);
     }
 
     // LD (HLD), A
@@ -800,100 +844,130 @@ impl CPU {
         self.op_add_reg(Register::A);
     }
 
+    // ADC A, B
     pub(super) fn instr_0x88(&mut self, _mem: &mut VirtualMemory) {
-        todo!();
+        self.op_adc_reg(Register::B);
     }
 
+    // ADC A, C
     pub(super) fn instr_0x89(&mut self, _mem: &mut VirtualMemory) {
-        todo!();
+        self.op_adc_reg(Register::C);
     }
 
+    // ADC A, D
     pub(super) fn instr_0x8A(&mut self, _mem: &mut VirtualMemory) {
-        todo!();
+        self.op_adc_reg(Register::D);
     }
 
+    // ADC A, E
     pub(super) fn instr_0x8B(&mut self, _mem: &mut VirtualMemory) {
-        todo!();
+        self.op_adc_reg(Register::E);
     }
 
+    // ADC A, H
     pub(super) fn instr_0x8C(&mut self, _mem: &mut VirtualMemory) {
-        todo!();
+        self.op_adc_reg(Register::H);
     }
 
+    // ADC A, L
     pub(super) fn instr_0x8D(&mut self, _mem: &mut VirtualMemory) {
-        todo!();
+        self.op_adc_reg(Register::L);
     }
 
-    pub(super) fn instr_0x8E(&mut self, _mem: &mut VirtualMemory) {
-        todo!();
+    // ADC A, (HL)
+    pub(super) fn instr_0x8E(&mut self, mem: &mut VirtualMemory) {
+        let addr = self.registers.read_pair(RegisterPair::HL);
+        let val = mem.read(addr);
+        self.op_adc(val);
     }
 
+    // ADC A, A
     pub(super) fn instr_0x8F(&mut self, _mem: &mut VirtualMemory) {
-        todo!();
+        self.op_adc_reg(Register::A);
     }
 
+    // SUB B
     pub(super) fn instr_0x90(&mut self, _mem: &mut VirtualMemory) {
-        todo!();
+        self.op_sub_reg(Register::B);
     }
 
+    // SUB C
     pub(super) fn instr_0x91(&mut self, _mem: &mut VirtualMemory) {
-        todo!();
+        self.op_sub_reg(Register::C);
     }
 
+    // SUB D
     pub(super) fn instr_0x92(&mut self, _mem: &mut VirtualMemory) {
-        todo!();
+        self.op_sub_reg(Register::D);
     }
 
+    // SUB E
     pub(super) fn instr_0x93(&mut self, _mem: &mut VirtualMemory) {
-        todo!();
+        self.op_sub_reg(Register::E);
     }
 
+    // SUB H
     pub(super) fn instr_0x94(&mut self, _mem: &mut VirtualMemory) {
-        todo!();
+        self.op_sub_reg(Register::H);
     }
 
+    // SUB L
     pub(super) fn instr_0x95(&mut self, _mem: &mut VirtualMemory) {
-        todo!();
+        self.op_sub_reg(Register::L);
     }
 
-    pub(super) fn instr_0x96(&mut self, _mem: &mut VirtualMemory) {
-        todo!();
+    // SUB (HL)
+    pub(super) fn instr_0x96(&mut self, mem: &mut VirtualMemory) {
+        let addr = self.registers.read_pair(RegisterPair::HL);
+        let val = mem.read(addr);
+        self.op_sub(val);
     }
 
+    // SUB A
     pub(super) fn instr_0x97(&mut self, _mem: &mut VirtualMemory) {
-        todo!();
+        self.op_sub_reg(Register::A);
     }
 
+    // SBC A, B
     pub(super) fn instr_0x98(&mut self, _mem: &mut VirtualMemory) {
-        todo!();
+        self.op_sbc_reg(Register::B);
     }
 
+    // SBC A, C
     pub(super) fn instr_0x99(&mut self, _mem: &mut VirtualMemory) {
-        todo!();
+        self.op_sbc_reg(Register::C);
     }
 
+    // SBC A, D
     pub(super) fn instr_0x9A(&mut self, _mem: &mut VirtualMemory) {
-        todo!();
+        self.op_sbc_reg(Register::D);
     }
 
+    // SBC A, E
     pub(super) fn instr_0x9B(&mut self, _mem: &mut VirtualMemory) {
-        todo!();
+        self.op_sbc_reg(Register::E);
     }
 
+    // SBC A, H
     pub(super) fn instr_0x9C(&mut self, _mem: &mut VirtualMemory) {
-        todo!();
+        self.op_sbc_reg(Register::H);
     }
 
+    // SBC A, L
     pub(super) fn instr_0x9D(&mut self, _mem: &mut VirtualMemory) {
-        todo!();
+        self.op_sbc_reg(Register::L);
     }
 
-    pub(super) fn instr_0x9E(&mut self, _mem: &mut VirtualMemory) {
-        todo!();
+    // SBC A, (HL)
+    pub(super) fn instr_0x9E(&mut self, mem: &mut VirtualMemory) {
+        let addr = self.registers.read_pair(RegisterPair::HL);
+        let val = mem.read(addr);
+        self.op_sbc(val);
     }
 
+    // SBC A, A
     pub(super) fn instr_0x9F(&mut self, _mem: &mut VirtualMemory) {
-        todo!();
+        self.op_sbc_reg(Register::A);
     }
 
     pub(super) fn instr_0xA0(&mut self, _mem: &mut VirtualMemory) {
@@ -1052,7 +1126,7 @@ impl CPU {
 
     // ADD A, u8
     pub(super) fn instr_0xC6(&mut self, mem: &mut VirtualMemory) {
-        let src_val = self.fetch(mem) as u8;
+        let src_val = self.fetch_and_incr_pc(mem) as u8;
         self.op_add(src_val);
     }
 
@@ -1084,8 +1158,10 @@ impl CPU {
         todo!();
     }
 
-    pub(super) fn instr_0xCE(&mut self, _mem: &mut VirtualMemory) {
-        todo!();
+    // ADC A, u8
+    pub(super) fn instr_0xCE(&mut self, mem: &mut VirtualMemory) {
+        let val = self.fetch_and_incr_pc(mem);
+        self.op_adc(val);
     }
 
     pub(super) fn instr_0xCF(&mut self, _mem: &mut VirtualMemory) {
@@ -1118,8 +1194,10 @@ impl CPU {
         self.op_push_stack_from_regpair(RegisterPair::DE, mem);
     }
 
-    pub(super) fn instr_0xD6(&mut self, _mem: &mut VirtualMemory) {
-        todo!();
+    // SUB u8
+    pub(super) fn instr_0xD6(&mut self, mem: &mut VirtualMemory) {
+        let val = self.fetch_and_incr_pc(mem);
+        self.op_sub(val);
     }
 
     pub(super) fn instr_0xD7(&mut self, _mem: &mut VirtualMemory) {
@@ -1150,8 +1228,10 @@ impl CPU {
         todo!();
     }
 
-    pub(super) fn instr_0xDE(&mut self, _mem: &mut VirtualMemory) {
-        todo!();
+    // SBC A, u8
+    pub(super) fn instr_0xDE(&mut self, mem: &mut VirtualMemory) {
+        let val = self.fetch_and_incr_pc(mem);
+        self.op_sbc(val);
     }
 
     pub(super) fn instr_0xDF(&mut self, _mem: &mut VirtualMemory) {
@@ -1266,7 +1346,7 @@ impl CPU {
     // LDHL SP, i8
     pub(super) fn instr_0xF8(&mut self, mem: &mut VirtualMemory) {
         // Be careful of data types and sign extensions in this operation!
-        let operand = self.fetch(mem) as i8;
+        let operand = self.fetch_and_incr_pc(mem) as i8;
         let (result, carries_or_borrows) = if operand.is_negative() {
             // Sign extend operand to i16 then multiply by -1 to make it positive.
             // Finally convert positive value to u16. We need to cast to i16 before
