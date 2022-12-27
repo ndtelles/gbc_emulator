@@ -270,6 +270,71 @@ impl CPU {
         self.op_CP(val);
     }
 
+    // Increment register
+    fn op_INC_reg(&mut self, reg: Register) {
+        let lhs = self.registers.read(reg);
+        let (result, carries) = add_and_get_carries(lhs, 1);
+        self.registers.write(reg, result);
+
+        self.registers.set_flags(&FlagRegister {
+            z: result == 0,
+            n: false,
+            h: index_bitmap(carries, 3),
+            cy: self.registers.get_flags().cy,
+        });
+    }
+
+    // Decrement register
+    fn op_DEC_reg(&mut self, reg: Register) {
+        let lhs = self.registers.read(reg);
+        let (result, borrows) = subtract_and_get_borrows(lhs, 1);
+        self.registers.write(reg, result);
+
+        self.registers.set_flags(&FlagRegister {
+            z: result == 0,
+            n: true,
+            h: index_bitmap(borrows, 3),
+            cy: self.registers.get_flags().cy,
+        });
+    }
+
+    /**
+     * 16-bit Arithmetic Operation Helpers
+     */
+    // Add value to register pair HL and set flags
+    fn op_ADD_u16(&mut self, rhs: u16) {
+        let lhs = self.registers.read_pair(RegisterPair::HL);
+        let (result, carries) = add_and_get_carries(lhs, rhs);
+        self.registers.write_pair(RegisterPair::HL, result);
+
+        self.registers.set_flags(&FlagRegister {
+            z: self.registers.get_flags().z,
+            n: false,
+            h: index_bitmap(carries, 11),
+            cy: index_bitmap(carries, 15),
+        });
+    }
+
+    // Add register pair to register pair HL and set flags
+    fn op_ADD_regpair(&mut self, pair: RegisterPair) {
+        let rhs = self.registers.read_pair(pair);
+        self.op_ADD_u16(rhs)
+    }
+
+    // Increment register pair
+    fn op_INC_regpair(&mut self, pair: RegisterPair) {
+        let lhs = self.registers.read_pair(pair);
+        let result = lhs.wrapping_add(1);
+        self.registers.write_pair(pair, result);
+    }
+
+    // Decrement register pair
+    fn op_DEC_regpair(&mut self, pair: RegisterPair) {
+        let lhs = self.registers.read_pair(pair);
+        let result = lhs.wrapping_sub(1);
+        self.registers.write_pair(pair, result);
+    }
+
     /**
      * Instructions
      */
@@ -287,16 +352,19 @@ impl CPU {
         self.op_LD_regpairptr_from_reg(RegisterPair::BC, Register::A, mem);
     }
 
+    // INC BC
     pub(super) fn instr_0x03(&mut self, _mem: &mut VirtualMemory) {
-        todo!();
+        self.op_INC_regpair(RegisterPair::BC);
     }
 
+    // INC B
     pub(super) fn instr_0x04(&mut self, _mem: &mut VirtualMemory) {
-        todo!();
+        self.op_INC_reg(Register::B);
     }
 
+    // DEC B
     pub(super) fn instr_0x05(&mut self, _mem: &mut VirtualMemory) {
-        todo!();
+        self.op_DEC_reg(Register::B);
     }
 
     // LD B, u8
@@ -315,8 +383,9 @@ impl CPU {
         mem.write(addr + 1, (self.sp >> 8) as u8);
     }
 
+    //  ADD HL, BC
     pub(super) fn instr_0x09(&mut self, _mem: &mut VirtualMemory) {
-        todo!();
+        self.op_ADD_regpair(RegisterPair::BC);
     }
 
     // LD A, (BC)
@@ -324,16 +393,19 @@ impl CPU {
         self.op_LD_reg_from_regpairptr(Register::A, RegisterPair::BC, mem);
     }
 
+    // DEC BC
     pub(super) fn instr_0x0B(&mut self, _mem: &mut VirtualMemory) {
-        todo!();
+        self.op_DEC_regpair(RegisterPair::BC);
     }
 
+    // INC C
     pub(super) fn instr_0x0C(&mut self, _mem: &mut VirtualMemory) {
-        todo!();
+        self.op_INC_reg(Register::C);
     }
 
+    // DEC C
     pub(super) fn instr_0x0D(&mut self, _mem: &mut VirtualMemory) {
-        todo!();
+        self.op_DEC_reg(Register::C);
     }
 
     // LD C, u8
@@ -359,16 +431,19 @@ impl CPU {
         self.op_LD_reg_from_regpairptr(Register::A, RegisterPair::DE, mem);
     }
 
+    // INC DE
     pub(super) fn instr_0x13(&mut self, _mem: &mut VirtualMemory) {
-        todo!();
+        self.op_INC_regpair(RegisterPair::DE);
     }
 
+    // INC D
     pub(super) fn instr_0x14(&mut self, _mem: &mut VirtualMemory) {
-        todo!();
+        self.op_INC_reg(Register::D);
     }
 
+    // DEC D
     pub(super) fn instr_0x15(&mut self, _mem: &mut VirtualMemory) {
-        todo!();
+        self.op_DEC_reg(Register::D);
     }
 
     // LD D, u8
@@ -384,8 +459,9 @@ impl CPU {
         todo!();
     }
 
+    // ADD HL, DE
     pub(super) fn instr_0x19(&mut self, _mem: &mut VirtualMemory) {
-        todo!();
+        self.op_ADD_regpair(RegisterPair::DE);
     }
 
     // LD A, (DE)
@@ -393,16 +469,19 @@ impl CPU {
         self.op_LD_reg_from_regpairptr(Register::A, RegisterPair::DE, mem);
     }
 
+    // DEC DE
     pub(super) fn instr_0x1B(&mut self, _mem: &mut VirtualMemory) {
-        todo!();
+        self.op_DEC_regpair(RegisterPair::DE);
     }
 
+    // INC E
     pub(super) fn instr_0x1C(&mut self, _mem: &mut VirtualMemory) {
-        todo!();
+        self.op_INC_reg(Register::E);
     }
 
+    // DEC E
     pub(super) fn instr_0x1D(&mut self, _mem: &mut VirtualMemory) {
-        todo!();
+        self.op_DEC_reg(Register::E);
     }
 
     // LD E, u8
@@ -430,16 +509,19 @@ impl CPU {
         self.registers.write_pair(RegisterPair::HL, new_hl);
     }
 
+    // INC HL
     pub(super) fn instr_0x23(&mut self, _mem: &mut VirtualMemory) {
-        todo!();
+        self.op_INC_regpair(RegisterPair::HL);
     }
 
+    // INC H
     pub(super) fn instr_0x24(&mut self, _mem: &mut VirtualMemory) {
-        todo!();
+        self.op_INC_reg(Register::H);
     }
 
+    // DEC H
     pub(super) fn instr_0x25(&mut self, _mem: &mut VirtualMemory) {
-        todo!();
+        self.op_DEC_reg(Register::H);
     }
 
     // LD H, u8
@@ -455,8 +537,9 @@ impl CPU {
         todo!();
     }
 
+    // ADD HL, HL
     pub(super) fn instr_0x29(&mut self, _mem: &mut VirtualMemory) {
-        todo!();
+        self.op_ADD_regpair(RegisterPair::HL);
     }
 
     // LD A, (HLI)
@@ -466,16 +549,19 @@ impl CPU {
         self.registers.write_pair(RegisterPair::HL, new_hl);
     }
 
+    // DEC HL
     pub(super) fn instr_0x2B(&mut self, _mem: &mut VirtualMemory) {
-        todo!();
+        self.op_DEC_regpair(RegisterPair::HL);
     }
 
+    // INC L
     pub(super) fn instr_0x2C(&mut self, _mem: &mut VirtualMemory) {
-        todo!();
+        self.op_INC_reg(Register::L);
     }
 
+    // DEC L
     pub(super) fn instr_0x2D(&mut self, _mem: &mut VirtualMemory) {
-        todo!();
+        self.op_DEC_reg(Register::L);
     }
 
     // LD L, u8
@@ -503,16 +589,39 @@ impl CPU {
         self.registers.write_pair(RegisterPair::HL, new_hl);
     }
 
+    // INC SP
     pub(super) fn instr_0x33(&mut self, _mem: &mut VirtualMemory) {
-        todo!();
+        self.sp = self.sp.wrapping_add(1);
     }
 
-    pub(super) fn instr_0x34(&mut self, _mem: &mut VirtualMemory) {
-        todo!();
+    // INC (HL)
+    pub(super) fn instr_0x34(&mut self, mem: &mut VirtualMemory) {
+        let addr = self.registers.read_pair(RegisterPair::HL);
+        let lhs = mem.read(addr);
+        let (result, carries) = add_and_get_carries(lhs, 1);
+        mem.write(addr, result);
+
+        self.registers.set_flags(&FlagRegister {
+            z: result == 0,
+            n: false,
+            h: index_bitmap(carries, 3),
+            cy: self.registers.get_flags().cy,
+        });
     }
 
-    pub(super) fn instr_0x35(&mut self, _mem: &mut VirtualMemory) {
-        todo!();
+    // DEC (HL)
+    pub(super) fn instr_0x35(&mut self, mem: &mut VirtualMemory) {
+        let addr = self.registers.read_pair(RegisterPair::HL);
+        let lhs = mem.read(addr);
+        let (result, borrows) = subtract_and_get_borrows(lhs, 1);
+        mem.write(addr, result);
+
+        self.registers.set_flags(&FlagRegister {
+            z: result == 0,
+            n: true,
+            h: index_bitmap(borrows, 3),
+            cy: self.registers.get_flags().cy,
+        });
     }
 
     // LD (HL), u8
@@ -528,8 +637,9 @@ impl CPU {
         todo!();
     }
 
+    // ADD HL, SP
     pub(super) fn instr_0x39(&mut self, _mem: &mut VirtualMemory) {
-        todo!();
+        self.op_ADD_u16(self.sp);
     }
 
     // LD A, (HLD)
@@ -539,12 +649,14 @@ impl CPU {
         self.registers.write_pair(RegisterPair::HL, new_hl);
     }
 
+    // DEC SP
     pub(super) fn instr_0x3B(&mut self, _mem: &mut VirtualMemory) {
-        todo!();
+        self.sp = self.sp.wrapping_sub(1);
     }
 
+    // INC A
     pub(super) fn instr_0x3C(&mut self, _mem: &mut VirtualMemory) {
-        todo!();
+        self.op_INC_reg(Register::A);
     }
 
     pub(super) fn instr_0x3D(&mut self, _mem: &mut VirtualMemory) {
@@ -1393,8 +1505,19 @@ impl CPU {
         todo!();
     }
 
-    pub(super) fn instr_0xE8(&mut self, _mem: &mut VirtualMemory) {
-        todo!();
+    // ADD SP, e
+    pub(super) fn instr_0xE8(&mut self, mem: &mut VirtualMemory) {
+        let rhs = self.fetch_and_incr_pc(mem) as u16;
+        let (result, carries) = add_and_get_carries(self.sp, rhs);
+        self.sp = result;
+
+        self.registers.set_flags(&FlagRegister {
+            z: false,
+            n: false,
+            // https://stackoverflow.com/a/57978555
+            h: index_bitmap(carries, 3),
+            cy: index_bitmap(carries, 15),
+        });
     }
 
     pub(super) fn instr_0xE9(&mut self, _mem: &mut VirtualMemory) {
