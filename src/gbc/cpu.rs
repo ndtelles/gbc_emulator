@@ -1,8 +1,10 @@
-mod instruction;
+mod instructions;
 mod instruction_impl;
+mod cb_instruction_impl;
+mod op_helpers;
 mod register;
 
-use self::instruction::map_instruction;
+use self::instructions::map_instruction;
 use self::register::{RegisterMap, RegisterMapMethods};
 use super::memory::{VirtualMemory, PROGRAM_START_ADDR};
 
