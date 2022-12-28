@@ -1,6 +1,6 @@
 use crate::{
     gbc::memory::VirtualMemory,
-    util::{add_and_get_carries, index_bitmap, subtract_and_get_borrows},
+    util::{add_and_get_carries, index_bitmap, reset_bit, set_bit, subtract_and_get_borrows},
 };
 
 use super::{
@@ -517,5 +517,27 @@ impl CPU {
         let addr = self.registers.read_pair(RegisterPair::HL);
         let val = mem.read(addr);
         self.op_BIT(bit, val);
+    }
+
+    pub(super) fn op_SET_reg(&mut self, bit: usize, reg: Register) {
+        let val = self.registers.read(reg);
+        self.registers.write(reg, set_bit(val, bit));
+    }
+
+    pub(super) fn op_SET_from_HLptr(&self, bit: usize, mem: &mut VirtualMemory) {
+        let addr = self.registers.read_pair(RegisterPair::HL);
+        let val = mem.read(addr);
+        mem.write(addr, set_bit(val, bit));
+    }
+
+    pub(super) fn op_RES_reg(&mut self, bit: usize, reg: Register) {
+        let val = self.registers.read(reg);
+        self.registers.write(reg, reset_bit(val, bit));
+    }
+
+    pub(super) fn op_RES_from_HLptr(&mut self, bit: usize, mem: &mut VirtualMemory) {
+        let addr = self.registers.read_pair(RegisterPair::HL);
+        let val = mem.read(addr);
+        mem.write(addr, reset_bit(val, bit));
     }
 }

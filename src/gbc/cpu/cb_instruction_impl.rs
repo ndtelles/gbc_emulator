@@ -927,259 +927,323 @@ impl CPU {
         todo!();
     }
 
+    // SET 0, B
     pub(super) fn instr_0xCBC0(&mut self, _mem: &mut VirtualMemory) {
-        todo!();
+        self.op_SET_reg(0, Register::B);
     }
 
+    // SET 0, C
     pub(super) fn instr_0xCBC1(&mut self, _mem: &mut VirtualMemory) {
-        todo!();
+        self.op_SET_reg(0, Register::C);
     }
 
+    // SET 0, D
     pub(super) fn instr_0xCBC2(&mut self, _mem: &mut VirtualMemory) {
-        todo!();
+        self.op_SET_reg(0, Register::D);
     }
 
+    // SET 0, E
     pub(super) fn instr_0xCBC3(&mut self, _mem: &mut VirtualMemory) {
-        todo!();
+        self.op_SET_reg(0, Register::E);
     }
 
+    // SET 0, H
     pub(super) fn instr_0xCBC4(&mut self, _mem: &mut VirtualMemory) {
-        todo!();
+        self.op_SET_reg(0, Register::H);
     }
 
+    // SET 0, L
     pub(super) fn instr_0xCBC5(&mut self, _mem: &mut VirtualMemory) {
-        todo!();
+        self.op_SET_reg(0, Register::L);
     }
 
-    pub(super) fn instr_0xCBC6(&mut self, _mem: &mut VirtualMemory) {
-        todo!();
+    // SET 0, (HL)
+    pub(super) fn instr_0xCBC6(&mut self, mem: &mut VirtualMemory) {
+        self.op_SET_from_HLptr(0, mem);
     }
 
+    // SET 0, A
     pub(super) fn instr_0xCBC7(&mut self, _mem: &mut VirtualMemory) {
-        todo!();
+        self.op_SET_reg(0, Register::A);
     }
 
+    // SET 1, B
     pub(super) fn instr_0xCBC8(&mut self, _mem: &mut VirtualMemory) {
-        todo!();
+        self.op_SET_reg(1, Register::B);
     }
 
+    // SET 1, C
     pub(super) fn instr_0xCBC9(&mut self, _mem: &mut VirtualMemory) {
-        todo!();
+        self.op_SET_reg(1, Register::C);
     }
 
+    // SET 1, D
     pub(super) fn instr_0xCBCA(&mut self, _mem: &mut VirtualMemory) {
-        todo!();
+        self.op_SET_reg(1, Register::D);
     }
 
+    // SET 1, E
     pub(super) fn instr_0xCBCB(&mut self, _mem: &mut VirtualMemory) {
-        todo!();
+        self.op_SET_reg(1, Register::E);
     }
 
+    // SET 1, H
     pub(super) fn instr_0xCBCC(&mut self, _mem: &mut VirtualMemory) {
-        todo!();
+        self.op_SET_reg(1, Register::H);
     }
 
+    // SET 1, L
     pub(super) fn instr_0xCBCD(&mut self, _mem: &mut VirtualMemory) {
-        todo!();
+        self.op_SET_reg(1, Register::L);
     }
 
-    pub(super) fn instr_0xCBCE(&mut self, _mem: &mut VirtualMemory) {
-        todo!();
+    // SET 1, (HL)
+    pub(super) fn instr_0xCBCE(&mut self, mem: &mut VirtualMemory) {
+        self.op_SET_from_HLptr(1, mem);
     }
 
+    // SET 1, A
     pub(super) fn instr_0xCBCF(&mut self, _mem: &mut VirtualMemory) {
-        todo!();
+        self.op_SET_reg(1, Register::A);
     }
 
+    // SET 2, B
     pub(super) fn instr_0xCBD0(&mut self, _mem: &mut VirtualMemory) {
-        todo!();
+        self.op_SET_reg(2, Register::B);
     }
 
+    // SET 2, C
     pub(super) fn instr_0xCBD1(&mut self, _mem: &mut VirtualMemory) {
-        todo!();
+        self.op_SET_reg(2, Register::C);
     }
 
+    // SET 2, D
     pub(super) fn instr_0xCBD2(&mut self, _mem: &mut VirtualMemory) {
-        todo!();
+        self.op_SET_reg(2, Register::D);
     }
 
+    // SET 2, E
     pub(super) fn instr_0xCBD3(&mut self, _mem: &mut VirtualMemory) {
-        todo!();
+        self.op_SET_reg(2, Register::E);
     }
 
+    // SET 2, H
     pub(super) fn instr_0xCBD4(&mut self, _mem: &mut VirtualMemory) {
-        todo!();
+        self.op_SET_reg(2, Register::H);
     }
 
+    // SET 2, L
     pub(super) fn instr_0xCBD5(&mut self, _mem: &mut VirtualMemory) {
-        todo!();
+        self.op_SET_reg(2, Register::L);
     }
 
-    pub(super) fn instr_0xCBD6(&mut self, _mem: &mut VirtualMemory) {
-        todo!();
+    // SET 2, (HL)
+    pub(super) fn instr_0xCBD6(&mut self, mem: &mut VirtualMemory) {
+        self.op_SET_from_HLptr(2, mem);
     }
 
+    // SET 2, A
     pub(super) fn instr_0xCBD7(&mut self, _mem: &mut VirtualMemory) {
-        todo!();
+        self.op_SET_reg(2, Register::A);
     }
 
+    // SET 3, B
     pub(super) fn instr_0xCBD8(&mut self, _mem: &mut VirtualMemory) {
-        todo!();
+        self.op_SET_reg(3, Register::B);
     }
 
+    // SET 3, C
     pub(super) fn instr_0xCBD9(&mut self, _mem: &mut VirtualMemory) {
-        todo!();
+        self.op_SET_reg(3, Register::C);
     }
 
+    // SET 3, D
     pub(super) fn instr_0xCBDA(&mut self, _mem: &mut VirtualMemory) {
-        todo!();
+        self.op_SET_reg(3, Register::D);
     }
 
+    // SET 3, E
     pub(super) fn instr_0xCBDB(&mut self, _mem: &mut VirtualMemory) {
-        todo!();
+        self.op_SET_reg(3, Register::E);
     }
 
+    // SET 3, H
     pub(super) fn instr_0xCBDC(&mut self, _mem: &mut VirtualMemory) {
-        todo!();
+        self.op_SET_reg(3, Register::H);
     }
 
+    // SET 3, L
     pub(super) fn instr_0xCBDD(&mut self, _mem: &mut VirtualMemory) {
-        todo!();
+        self.op_SET_reg(3, Register::L);
     }
 
-    pub(super) fn instr_0xCBDE(&mut self, _mem: &mut VirtualMemory) {
-        todo!();
+    // SET 3, (HL)
+    pub(super) fn instr_0xCBDE(&mut self, mem: &mut VirtualMemory) {
+        self.op_SET_from_HLptr(3, mem);
     }
 
+    // SET 3, A
     pub(super) fn instr_0xCBDF(&mut self, _mem: &mut VirtualMemory) {
-        todo!();
+        self.op_SET_reg(3, Register::A);
     }
 
+    // SET 4, B
     pub(super) fn instr_0xCBE0(&mut self, _mem: &mut VirtualMemory) {
-        todo!();
+        self.op_SET_reg(4, Register::B);
     }
 
+    // SET 4, C
     pub(super) fn instr_0xCBE1(&mut self, _mem: &mut VirtualMemory) {
-        todo!();
+        self.op_SET_reg(4, Register::C);
     }
 
+    // SET 4, D
     pub(super) fn instr_0xCBE2(&mut self, _mem: &mut VirtualMemory) {
-        todo!();
+        self.op_SET_reg(4, Register::D);
     }
 
+    // SET 4, E
     pub(super) fn instr_0xCBE3(&mut self, _mem: &mut VirtualMemory) {
-        todo!();
+        self.op_SET_reg(4, Register::E);
     }
 
+    // SET 4, H
     pub(super) fn instr_0xCBE4(&mut self, _mem: &mut VirtualMemory) {
-        todo!();
+        self.op_SET_reg(4, Register::H);
     }
 
+    // SET 4, L
     pub(super) fn instr_0xCBE5(&mut self, _mem: &mut VirtualMemory) {
-        todo!();
+        self.op_SET_reg(4, Register::L);
     }
 
-    pub(super) fn instr_0xCBE6(&mut self, _mem: &mut VirtualMemory) {
-        todo!();
+    // SET 4, (HL)
+    pub(super) fn instr_0xCBE6(&mut self, mem: &mut VirtualMemory) {
+        self.op_SET_from_HLptr(4, mem);
     }
 
+    // SET 4, A
     pub(super) fn instr_0xCBE7(&mut self, _mem: &mut VirtualMemory) {
-        todo!();
+        self.op_SET_reg(4, Register::A);
     }
 
+    // SET 5, B
     pub(super) fn instr_0xCBE8(&mut self, _mem: &mut VirtualMemory) {
-        todo!();
+        self.op_SET_reg(5, Register::B);
     }
 
+    // SET 5, C
     pub(super) fn instr_0xCBE9(&mut self, _mem: &mut VirtualMemory) {
-        todo!();
+        self.op_SET_reg(5, Register::C);
     }
 
+    // SET 5, D
     pub(super) fn instr_0xCBEA(&mut self, _mem: &mut VirtualMemory) {
-        todo!();
+        self.op_SET_reg(5, Register::D);
     }
 
+    // SET 5, E
     pub(super) fn instr_0xCBEB(&mut self, _mem: &mut VirtualMemory) {
-        todo!();
+        self.op_SET_reg(5, Register::E);
     }
 
+    // SET 5, H
     pub(super) fn instr_0xCBEC(&mut self, _mem: &mut VirtualMemory) {
-        todo!();
+        self.op_SET_reg(5, Register::H);
     }
 
+    // SET 5, L
     pub(super) fn instr_0xCBED(&mut self, _mem: &mut VirtualMemory) {
-        todo!();
+        self.op_SET_reg(5, Register::L);
     }
 
-    pub(super) fn instr_0xCBEE(&mut self, _mem: &mut VirtualMemory) {
-        todo!();
+    // SET 5, (HL)
+    pub(super) fn instr_0xCBEE(&mut self, mem: &mut VirtualMemory) {
+        self.op_SET_from_HLptr(5, mem);
     }
 
+    // SET 5, A
     pub(super) fn instr_0xCBEF(&mut self, _mem: &mut VirtualMemory) {
-        todo!();
+        self.op_SET_reg(5, Register::A);
     }
 
+    // SET 6, B
     pub(super) fn instr_0xCBF0(&mut self, _mem: &mut VirtualMemory) {
-        todo!();
+        self.op_SET_reg(6, Register::B);
     }
 
+    // SET 6, C
     pub(super) fn instr_0xCBF1(&mut self, _mem: &mut VirtualMemory) {
-        todo!();
+        self.op_SET_reg(6, Register::C);
     }
 
+    // SET 6, D
     pub(super) fn instr_0xCBF2(&mut self, _mem: &mut VirtualMemory) {
-        todo!();
+        self.op_SET_reg(6, Register::D);
     }
 
+    // SET 6, E
     pub(super) fn instr_0xCBF3(&mut self, _mem: &mut VirtualMemory) {
-        todo!();
+        self.op_SET_reg(6, Register::E);
     }
 
+    // SET 6, H
     pub(super) fn instr_0xCBF4(&mut self, _mem: &mut VirtualMemory) {
-        todo!();
+        self.op_SET_reg(6, Register::H);
     }
 
+    // SET 6, L
     pub(super) fn instr_0xCBF5(&mut self, _mem: &mut VirtualMemory) {
-        todo!();
+        self.op_SET_reg(6, Register::L);
     }
 
-    pub(super) fn instr_0xCBF6(&mut self, _mem: &mut VirtualMemory) {
-        todo!();
+    // SET 6, (HL)
+    pub(super) fn instr_0xCBF6(&mut self, mem: &mut VirtualMemory) {
+        self.op_SET_from_HLptr(6, mem);
     }
 
+    // SET 6, A
     pub(super) fn instr_0xCBF7(&mut self, _mem: &mut VirtualMemory) {
-        todo!();
+        self.op_SET_reg(6, Register::A);
     }
 
+    // SET 7, B
     pub(super) fn instr_0xCBF8(&mut self, _mem: &mut VirtualMemory) {
-        todo!();
+        self.op_SET_reg(7, Register::B);
     }
 
+    // SET 7, C
     pub(super) fn instr_0xCBF9(&mut self, _mem: &mut VirtualMemory) {
-        todo!();
+        self.op_SET_reg(7, Register::C);
     }
 
+    // SET 7, D
     pub(super) fn instr_0xCBFA(&mut self, _mem: &mut VirtualMemory) {
-        todo!();
+        self.op_SET_reg(7, Register::D);
     }
 
+    // SET 7, E
     pub(super) fn instr_0xCBFB(&mut self, _mem: &mut VirtualMemory) {
-        todo!();
+        self.op_SET_reg(7, Register::E);
     }
 
+    // SET 7, H
     pub(super) fn instr_0xCBFC(&mut self, _mem: &mut VirtualMemory) {
-        todo!();
+        self.op_SET_reg(7, Register::H);
     }
 
+    // SET 7, L
     pub(super) fn instr_0xCBFD(&mut self, _mem: &mut VirtualMemory) {
-        todo!();
+        self.op_SET_reg(7, Register::L);
     }
 
-    pub(super) fn instr_0xCBFE(&mut self, _mem: &mut VirtualMemory) {
-        todo!();
+    // SET 7, (HL)
+    pub(super) fn instr_0xCBFE(&mut self, mem: &mut VirtualMemory) {
+        self.op_SET_from_HLptr(7, mem);
     }
 
+    // SET 7, A
     pub(super) fn instr_0xCBFF(&mut self, _mem: &mut VirtualMemory) {
-        todo!();
+        self.op_SET_reg(7, Register::A);
     }
 }

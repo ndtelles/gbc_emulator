@@ -22,3 +22,13 @@ pub fn index_bitmap<T: PrimInt + Into<usize>>(bitmap: T, index: usize) -> bool {
     debug_assert!((size_of::<T>() * 8) > index);
     (bitmap.into() & (0x01 << index)) != 0
 }
+
+pub fn set_bit(val: u8, bit: usize) -> u8 {
+    debug_assert!((size_of::<u8>() * 8) > bit);
+    val | (0x1u8 << bit)
+}
+
+pub fn reset_bit(val: u8, bit: usize) -> u8 {
+    debug_assert!((size_of::<u8>() * 8) > bit);
+    val & (!(0x1u8 << bit))
+}
