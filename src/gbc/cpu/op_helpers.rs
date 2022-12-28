@@ -352,9 +352,7 @@ impl CPU {
     /**
      * Rotate Shift Instructions
      */
-    // Rotate register left. Don't include carry in rotated value
-    pub(super) fn op_RLC_reg(&mut self, reg: Register) {
-        let val = self.registers.read(reg);
+    pub(super) fn op_RLC(&mut self, val: u8) -> u8 {
         let result = val.rotate_left(1);
         self.registers.set_flags(&FlagRegister {
             z: result == 0,
@@ -362,21 +360,162 @@ impl CPU {
             h: false,
             cy: index_bitmap(val, 7),
         });
+        result
+    }
+
+    // Rotate register left. Don't include carry in rotated value
+    pub(super) fn op_RLC_reg(&mut self, reg: Register) {
+        let val = self.registers.read(reg);
+        let result = self.op_RLC(val);
         self.registers.write(reg, result);
     }
 
-    // Rotate register left. Include carry in rotated value
-    pub(super) fn op_RL_reg(&mut self, reg: Register) {
-        let val = self.registers.read(reg);
+    pub(super) fn op_RL(&mut self, val: u8) -> u8 {
         let old_cy = self.registers.get_flags().cy;
         let result = (val << 1) | (old_cy as u8);
-
         self.registers.set_flags(&FlagRegister {
             z: result == 0,
             n: false,
             h: false,
             cy: index_bitmap(val, 7),
         });
+        result
+    }
+
+    // Rotate register left. Include carry in rotated value
+    pub(super) fn op_RL_reg(&mut self, reg: Register) {
+        let val = self.registers.read(reg);
+        let result = self.op_RL(val);
         self.registers.write(reg, result);
+    }
+
+    pub(super) fn op_RRC(&mut self, val: u8) -> u8 {
+        let result = val.rotate_right(1);
+        self.registers.set_flags(&FlagRegister {
+            z: result == 0,
+            n: false,
+            h: false,
+            cy: index_bitmap(val, 0),
+        });
+        result
+    }
+
+    // Rotate register right. Don't include carry in rotated value
+    pub(super) fn op_RRC_reg(&mut self, reg: Register) {
+        let val = self.registers.read(reg);
+        let result = self.op_RRC(val);
+        self.registers.write(reg, result);
+    }
+
+    pub(super) fn op_RR(&mut self, val: u8) -> u8 {
+        let old_cy = self.registers.get_flags().cy;
+        let result = ((old_cy as u8) << 7) | (val >> 1);
+        self.registers.set_flags(&FlagRegister {
+            z: result == 0,
+            n: false,
+            h: false,
+            cy: index_bitmap(val, 0),
+        });
+        result
+    }
+
+    // Rotate register right. Include carry in rotated value
+    pub(super) fn op_RR_reg(&mut self, reg: Register) {
+        let val = self.registers.read(reg);
+        let result = self.op_RR(val);
+        self.registers.write(reg, result);
+    }
+
+    pub(super) fn op_SLA(&mut self, val: u8) -> u8 {
+        let result = val << 1;
+        self.registers.set_flags(&FlagRegister {
+            z: result == 0,
+            n: false,
+            h: false,
+            cy: index_bitmap(val, 7),
+        });
+        result
+    }
+
+    // Shift register left
+    pub(super) fn op_SLA_reg(&mut self, reg: Register) {
+        let val = self.registers.read(reg);
+        let result = self.op_SLA(val);
+        self.registers.write(reg, result);
+    }
+
+    pub(super) fn op_SRA(&mut self, val: u8) -> u8 {
+        let result = (val & 0x80) | (val >> 1);
+        self.registers.set_flags(&FlagRegister {
+            z: result == 0,
+            n: false,
+            h: false,
+            cy: index_bitmap(val, 0),
+        });
+        result
+    }
+
+    // Shift register right
+    pub(super) fn op_SRA_reg(&mut self, reg: Register) {
+        let val = self.registers.read(reg);
+        let result = self.op_SRA(val);
+        self.registers.write(reg, result);
+    }
+
+    pub(super) fn op_SRL(&mut self, val: u8) -> u8 {
+        let result = val >> 1;
+        self.registers.set_flags(&FlagRegister {
+            z: result == 0,
+            n: false,
+            h: false,
+            cy: index_bitmap(val, 0),
+        });
+        result
+    }
+
+    // Shift register right
+    pub(super) fn op_SRL_reg(&mut self, reg: Register) {
+        let val = self.registers.read(reg);
+        let result = self.op_SRL(val);
+        self.registers.write(reg, result);
+    }
+
+    pub(super) fn op_SWAP(&mut self, val: u8) -> u8 {
+        let result = (val << 4) | (val >> 4);
+        self.registers.set_flags(&FlagRegister {
+            z: result == 0,
+            n: false,
+            h: false,
+            cy: false,
+        });
+        result
+    }
+
+    // Swap higher and lower order bits
+    pub(super) fn op_SWAP_reg(&mut self, reg: Register) {
+        let val = self.registers.read(reg);
+        let result = self.op_SWAP(val);
+        self.registers.write(reg, result);
+    }
+
+    // Writes to flag Z the complement of the contents of the specified bit
+    fn op_BIT(&mut self, bit: usize, val: u8) {
+        self.registers.set_flags(&FlagRegister {
+            z: !index_bitmap(val, bit),
+            n: false,
+            h: true,
+            cy: self.registers.get_flags().cy,
+        });
+    }
+
+    pub(super) fn op_BIT_reg(&mut self, bit: usize, reg: Register) {
+        let val = self.registers.read(reg);
+        self.op_BIT(bit, val);
+    }
+
+    pub(super) fn op_BIT_from_HLptr(&mut self, bit: usize, mem: &VirtualMemory) {
+        let addr = self.registers.read_pair(RegisterPair::HL);
+        let val = mem.read(addr);
+        self.op_BIT(bit, val);
     }
 }
