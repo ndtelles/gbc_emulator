@@ -2,8 +2,8 @@ use crate::gbc::memory::VirtualMemory;
 
 use super::CPU;
 
-pub fn map_instruction(opcode: u8) -> fn(&mut CPU, &mut VirtualMemory) {
-    match opcode {
+pub fn map_instruction(instruction: u8) -> fn(&mut CPU, &mut VirtualMemory) {
+    match instruction {
         0x00 => CPU::instr_0x00,
         0x01 => CPU::instr_0x01,
         0x02 => CPU::instr_0x02,
@@ -265,8 +265,8 @@ pub fn map_instruction(opcode: u8) -> fn(&mut CPU, &mut VirtualMemory) {
 
 // Instructions that follow the 0xCB opcode
 #[allow(non_snake_case)]
-pub fn map_CB_prefix_instruction(opcode: u8) -> fn(&mut CPU, &mut VirtualMemory) {
-    match opcode {
+pub fn map_CB_prefix_instruction(instruction: u8) -> fn(&mut CPU, &mut VirtualMemory) {
+    match instruction {
         0x00 => CPU::instr_0xCB00,
         0x01 => CPU::instr_0xCB01,
         0x02 => CPU::instr_0xCB02,

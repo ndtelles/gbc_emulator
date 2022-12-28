@@ -1086,6 +1086,7 @@ impl CPU {
         todo!();
     }
 
+    // Prefix for second instruction set
     pub(super) fn instr_0xCB(&mut self, mem: &mut VirtualMemory) {
         let instr = self.fetch_and_incr_pc(mem);
         let instruction_impl = map_CB_prefix_instruction(instr);
