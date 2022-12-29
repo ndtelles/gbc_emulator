@@ -32,3 +32,14 @@ pub fn reset_bit(val: u8, bit: usize) -> u8 {
     debug_assert!((size_of::<u8>() * 8) > bit);
     val & (!(0x1u8 << bit))
 }
+
+pub fn add_i8_to_u16(lhs: u16, rhs: i8) -> (u16, u16) {
+    if rhs.is_negative() {
+        // Sign extend operand to i16 then multiply by -1 to make it positive.
+        // Finally convert positive value to u16. We need to cast to i16 before
+        // multiply so value 128 doesn't overflow in i8. Yaaay Rust -_-
+        subtract_and_get_borrows(lhs, ((rhs as i16) * -1) as u16)
+    } else {
+        add_and_get_carries(lhs, rhs as u16)
+    }
+}

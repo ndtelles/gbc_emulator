@@ -1,11 +1,12 @@
 use crate::{
     gbc::memory::VirtualMemory,
-    util::{add_and_get_carries, index_bitmap, subtract_and_get_borrows},
+    util::{add_and_get_carries, add_i8_to_u16, index_bitmap, subtract_and_get_borrows},
 };
 
 use super::{
+    instructions::map_CB_prefix_instruction,
     register::{FlagRegister, Register, RegisterMapMethods, RegisterPair},
-    CPU, instructions::map_CB_prefix_instruction,
+    CPU,
 };
 
 #[allow(non_snake_case)]
@@ -156,8 +157,10 @@ impl CPU {
         self.registers.write(Register::A, result);
     }
 
-    pub(super) fn instr_0x18(&mut self, _mem: &mut VirtualMemory) {
-        todo!();
+    // JR i8
+    pub(super) fn instr_0x18(&mut self, mem: &mut VirtualMemory) {
+        let operand = self.fetch_and_incr_pc(mem) as i8;
+        self.pc = add_i8_to_u16(self.pc, operand).0;
     }
 
     // ADD HL, DE
@@ -204,8 +207,12 @@ impl CPU {
         self.registers.write(Register::A, result);
     }
 
-    pub(super) fn instr_0x20(&mut self, _mem: &mut VirtualMemory) {
-        todo!();
+    // JR NZ, i8
+    pub(super) fn instr_0x20(&mut self, mem: &mut VirtualMemory) {
+        let operand = self.fetch_and_incr_pc(mem) as i8;
+        if !self.registers.get_flags().z {
+            self.pc = add_i8_to_u16(self.pc, operand).0;
+        }
     }
 
     // LD HL, u16
@@ -244,8 +251,12 @@ impl CPU {
         todo!();
     }
 
-    pub(super) fn instr_0x28(&mut self, _mem: &mut VirtualMemory) {
-        todo!();
+    // JR Z, i8
+    pub(super) fn instr_0x28(&mut self, mem: &mut VirtualMemory) {
+        let operand = self.fetch_and_incr_pc(mem) as i8;
+        if self.registers.get_flags().z {
+            self.pc = add_i8_to_u16(self.pc, operand).0;
+        }
     }
 
     // ADD HL, HL
@@ -284,8 +295,12 @@ impl CPU {
         todo!();
     }
 
-    pub(super) fn instr_0x30(&mut self, _mem: &mut VirtualMemory) {
-        todo!();
+    // JR NC, i8
+    pub(super) fn instr_0x30(&mut self, mem: &mut VirtualMemory) {
+        let operand = self.fetch_and_incr_pc(mem) as i8;
+        if !self.registers.get_flags().cy {
+            self.pc = add_i8_to_u16(self.pc, operand).0;
+        }
     }
 
     // LD SP, u16
@@ -344,8 +359,12 @@ impl CPU {
         todo!();
     }
 
-    pub(super) fn instr_0x38(&mut self, _mem: &mut VirtualMemory) {
-        todo!();
+    // JR C, i8
+    pub(super) fn instr_0x38(&mut self, mem: &mut VirtualMemory) {
+        let operand = self.fetch_and_incr_pc(mem) as i8;
+        if self.registers.get_flags().cy {
+            self.pc = add_i8_to_u16(self.pc, operand).0;
+        }
     }
 
     // ADD HL, SP
@@ -1047,12 +1066,17 @@ impl CPU {
         self.op_POP_stack_to_regpair(RegisterPair::BC, mem);
     }
 
-    pub(super) fn instr_0xC2(&mut self, _mem: &mut VirtualMemory) {
-        todo!();
+    // JP NZ, u16
+    pub(super) fn instr_0xC2(&mut self, mem: &mut VirtualMemory) {
+        let new_pc = self.fetch_and_incr_pc_16(mem);
+        if !self.registers.get_flags().z {
+            self.pc = new_pc;
+        }
     }
 
-    pub(super) fn instr_0xC3(&mut self, _mem: &mut VirtualMemory) {
-        todo!();
+    // JP u16
+    pub(super) fn instr_0xC3(&mut self, mem: &mut VirtualMemory) {
+        self.pc = self.fetch_and_incr_pc_16(mem);
     }
 
     pub(super) fn instr_0xC4(&mut self, _mem: &mut VirtualMemory) {
@@ -1082,8 +1106,12 @@ impl CPU {
         todo!();
     }
 
-    pub(super) fn instr_0xCA(&mut self, _mem: &mut VirtualMemory) {
-        todo!();
+    // JP Z, u16
+    pub(super) fn instr_0xCA(&mut self, mem: &mut VirtualMemory) {
+        let new_pc = self.fetch_and_incr_pc_16(mem);
+        if self.registers.get_flags().z {
+            self.pc = new_pc;
+        }
     }
 
     // Prefix for second instruction set
@@ -1120,8 +1148,12 @@ impl CPU {
         self.op_POP_stack_to_regpair(RegisterPair::DE, mem);
     }
 
-    pub(super) fn instr_0xD2(&mut self, _mem: &mut VirtualMemory) {
-        todo!();
+    // JP NC, u16
+    pub(super) fn instr_0xD2(&mut self, mem: &mut VirtualMemory) {
+        let new_pc = self.fetch_and_incr_pc_16(mem);
+        if !self.registers.get_flags().cy {
+            self.pc = new_pc;
+        }
     }
 
     pub(super) fn instr_0xD3(&mut self, _mem: &mut VirtualMemory) {
@@ -1155,8 +1187,12 @@ impl CPU {
         todo!();
     }
 
-    pub(super) fn instr_0xDA(&mut self, _mem: &mut VirtualMemory) {
-        todo!();
+    // JP C, u16
+    pub(super) fn instr_0xDA(&mut self, mem: &mut VirtualMemory) {
+        let new_pc = self.fetch_and_incr_pc_16(mem);
+        if self.registers.get_flags().cy {
+            self.pc = new_pc;
+        }
     }
 
     pub(super) fn instr_0xDB(&mut self, _mem: &mut VirtualMemory) {
@@ -1234,8 +1270,9 @@ impl CPU {
         });
     }
 
+    // JP (HL)
     pub(super) fn instr_0xE9(&mut self, _mem: &mut VirtualMemory) {
-        todo!();
+        self.pc = self.registers.read_pair(RegisterPair::HL);
     }
 
     // LD (u16), A
@@ -1307,14 +1344,7 @@ impl CPU {
     pub(super) fn instr_0xF8(&mut self, mem: &mut VirtualMemory) {
         // Be careful of data types and sign extensions in this operation!
         let operand = self.fetch_and_incr_pc(mem) as i8;
-        let (result, carries_or_borrows) = if operand.is_negative() {
-            // Sign extend operand to i16 then multiply by -1 to make it positive.
-            // Finally convert positive value to u16. We need to cast to i16 before
-            // multiply so value 128 doesn't overflow in i8. Yaaay Rust -_-
-            subtract_and_get_borrows(self.sp, ((operand as i16) * -1) as u16)
-        } else {
-            add_and_get_carries(self.sp, operand as u16)
-        };
+        let (result, carries_or_borrows) = add_i8_to_u16(self.sp, operand);
         self.registers.write_pair(RegisterPair::HL, result);
         self.registers.set_flags(&FlagRegister {
             z: false,
