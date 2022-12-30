@@ -1,6 +1,6 @@
 use enum_map::{enum_map, Enum, EnumMap};
 
-use crate::util::index_bitmap;
+use crate::util::{index_bitmap, Bytes};
 
 pub type RegisterMap = EnumMap<Register, u8>;
 
@@ -43,8 +43,8 @@ impl RegisterMapMethods for RegisterMap {
 
     fn write_pair(&mut self, pair: RegisterPair, val: u16) {
         let (high, low) = map_register_pair_to_register(pair);
-        self.write(high, (val >> 8) as u8);
-        self.write(low, val as u8);
+        self.write(high, val.high());
+        self.write(low, val.low());
     }
 
     fn get_flags(&self) -> FlagRegister {

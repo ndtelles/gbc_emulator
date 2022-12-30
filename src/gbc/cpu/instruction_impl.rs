@@ -1,6 +1,6 @@
 use crate::{
     gbc::memory::VirtualMemory,
-    util::{add_and_get_carries, add_i8_to_u16, index_bitmap, subtract_and_get_borrows},
+    util::{add_and_get_carries, add_i8_to_u16, index_bitmap, subtract_and_get_borrows, Bytes},
 };
 
 use super::{
@@ -63,8 +63,8 @@ impl CPU {
     // LD (u16), SP
     pub(super) fn instr_0x08(&mut self, mem: &mut VirtualMemory) {
         let addr = self.fetch_and_incr_pc_16(mem);
-        mem.write(addr, self.sp as u8);
-        mem.write(addr + 1, (self.sp >> 8) as u8);
+        mem.write(addr, self.sp.low());
+        mem.write(addr + 1, self.sp.high());
     }
 
     //  ADD HL, BC
@@ -1079,8 +1079,16 @@ impl CPU {
         self.pc = self.fetch_and_incr_pc_16(mem);
     }
 
-    pub(super) fn instr_0xC4(&mut self, _mem: &mut VirtualMemory) {
-        todo!();
+    // CALL NZ, u16
+    pub(super) fn instr_0xC4(&mut self, mem: &mut VirtualMemory) {
+        let new_pc = self.fetch_and_incr_pc_16(mem);
+        if !self.registers.get_flags().z {
+            self.sp -= 1;
+            mem.write(self.sp, self.pc.high());
+            self.sp -= 1;
+            mem.write(self.sp, self.pc.low());
+            self.pc = new_pc;
+        }
     }
 
     // PUSH BC
@@ -1121,12 +1129,26 @@ impl CPU {
         instruction_impl(self, mem);
     }
 
-    pub(super) fn instr_0xCC(&mut self, _mem: &mut VirtualMemory) {
-        todo!();
+    // CALL Z, u16
+    pub(super) fn instr_0xCC(&mut self, mem: &mut VirtualMemory) {
+        let new_pc = self.fetch_and_incr_pc_16(mem);
+        if self.registers.get_flags().z {
+            self.sp -= 1;
+            mem.write(self.sp, self.pc.high());
+            self.sp -= 1;
+            mem.write(self.sp, self.pc.low());
+            self.pc = new_pc;
+        }
     }
 
-    pub(super) fn instr_0xCD(&mut self, _mem: &mut VirtualMemory) {
-        todo!();
+    // CALL u16
+    pub(super) fn instr_0xCD(&mut self, mem: &mut VirtualMemory) {
+        let new_pc = self.fetch_and_incr_pc_16(mem);
+        self.sp -= 1;
+        mem.write(self.sp, self.pc.high());
+        self.sp -= 1;
+        mem.write(self.sp, self.pc.low());
+        self.pc = new_pc;
     }
 
     // ADC A, u8
@@ -1160,8 +1182,16 @@ impl CPU {
         todo!();
     }
 
-    pub(super) fn instr_0xD4(&mut self, _mem: &mut VirtualMemory) {
-        todo!();
+    // CALL NC, u16
+    pub(super) fn instr_0xD4(&mut self, mem: &mut VirtualMemory) {
+        let new_pc = self.fetch_and_incr_pc_16(mem);
+        if !self.registers.get_flags().cy {
+            self.sp -= 1;
+            mem.write(self.sp, self.pc.high());
+            self.sp -= 1;
+            mem.write(self.sp, self.pc.low());
+            self.pc = new_pc;
+        }
     }
 
     // PUSH DE
@@ -1199,8 +1229,16 @@ impl CPU {
         todo!();
     }
 
-    pub(super) fn instr_0xDC(&mut self, _mem: &mut VirtualMemory) {
-        todo!();
+    // CALL C, u16
+    pub(super) fn instr_0xDC(&mut self, mem: &mut VirtualMemory) {
+        let new_pc = self.fetch_and_incr_pc_16(mem);
+        if self.registers.get_flags().cy {
+            self.sp -= 1;
+            mem.write(self.sp, self.pc.high());
+            self.sp -= 1;
+            mem.write(self.sp, self.pc.low());
+            self.pc = new_pc;
+        }
     }
 
     pub(super) fn instr_0xDD(&mut self, _mem: &mut VirtualMemory) {

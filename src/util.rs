@@ -43,3 +43,18 @@ pub fn add_i8_to_u16(lhs: u16, rhs: i8) -> (u16, u16) {
         add_and_get_carries(lhs, rhs as u16)
     }
 }
+
+pub trait Bytes {
+    fn high(self) -> u8;
+    fn low(self) -> u8;
+}
+
+impl Bytes for u16 {
+    fn high(self) -> u8 {
+        (self >> 8) as u8
+    }
+
+    fn low(self) -> u8 {
+        self as u8
+    }
+}
