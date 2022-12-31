@@ -1,1426 +1,1447 @@
+#![allow(non_snake_case)]
+
 use crate::{
-    gbc::memory::VirtualMemory,
+    gbc::GBCState,
     util::{add_and_get_carries, add_i8_to_u16, index_bitmap, subtract_and_get_borrows, Bytes},
 };
 
 use super::{
     instructions::map_CB_prefix_instruction,
+    op_helpers::*,
     register::{FlagRegister, Register, RegisterMapMethods, RegisterPair},
-    CPU,
 };
 
-#[allow(non_snake_case)]
-impl CPU {
-    /**
-     * Instructions
-     */
-
-    // NOP
-    pub(super) fn instr_0x00(&mut self, _mem: &mut VirtualMemory) {}
-
-    // LD BC, u16
-    pub(super) fn instr_0x01(&mut self, mem: &mut VirtualMemory) {
-        self.op_LD_registerpair_from_u16(RegisterPair::BC, mem);
-    }
-
-    // LD (BC), A
-    pub(super) fn instr_0x02(&mut self, mem: &mut VirtualMemory) {
-        self.op_LD_regpairptr_from_reg(RegisterPair::BC, Register::A, mem);
-    }
-
-    // INC BC
-    pub(super) fn instr_0x03(&mut self, _mem: &mut VirtualMemory) {
-        self.op_INC_regpair(RegisterPair::BC);
-    }
-
-    // INC B
-    pub(super) fn instr_0x04(&mut self, _mem: &mut VirtualMemory) {
-        self.op_INC_reg(Register::B);
-    }
-
-    // DEC B
-    pub(super) fn instr_0x05(&mut self, _mem: &mut VirtualMemory) {
-        self.op_DEC_reg(Register::B);
-    }
-
-    // LD B, u8
-    pub(super) fn instr_0x06(&mut self, mem: &mut VirtualMemory) {
-        self.op_LD_reg_from_u8(Register::B, mem);
-    }
-
-    // RLCA
-    pub(super) fn instr_0x07(&mut self, _mem: &mut VirtualMemory) {
-        let val = self.registers.read(Register::A);
-        self.registers.set_flags(&FlagRegister {
-            z: false,
-            n: false,
-            h: false,
-            cy: index_bitmap(val, 7),
-        });
-        self.registers.write(Register::A, val.rotate_left(1));
-    }
-
-    // LD (u16), SP
-    pub(super) fn instr_0x08(&mut self, mem: &mut VirtualMemory) {
-        let addr = self.fetch_and_incr_pc_16(mem);
-        mem.write(addr, self.sp.low());
-        mem.write(addr + 1, self.sp.high());
-    }
-
-    //  ADD HL, BC
-    pub(super) fn instr_0x09(&mut self, _mem: &mut VirtualMemory) {
-        self.op_ADD_regpair(RegisterPair::BC);
-    }
-
-    // LD A, (BC)
-    pub(super) fn instr_0x0A(&mut self, mem: &mut VirtualMemory) {
-        self.op_LD_reg_from_regpairptr(Register::A, RegisterPair::BC, mem);
-    }
-
-    // DEC BC
-    pub(super) fn instr_0x0B(&mut self, _mem: &mut VirtualMemory) {
-        self.op_DEC_regpair(RegisterPair::BC);
-    }
-
-    // INC C
-    pub(super) fn instr_0x0C(&mut self, _mem: &mut VirtualMemory) {
-        self.op_INC_reg(Register::C);
-    }
-
-    // DEC C
-    pub(super) fn instr_0x0D(&mut self, _mem: &mut VirtualMemory) {
-        self.op_DEC_reg(Register::C);
-    }
-
-    // LD C, u8
-    pub(super) fn instr_0x0E(&mut self, mem: &mut VirtualMemory) {
-        self.op_LD_reg_from_u8(Register::C, mem);
-    }
-
-    // RRCA
-    pub(super) fn instr_0x0F(&mut self, _mem: &mut VirtualMemory) {
-        let val = self.registers.read(Register::A);
-        self.registers.set_flags(&FlagRegister {
-            z: false,
-            n: false,
-            h: false,
-            cy: index_bitmap(val, 0),
-        });
-        self.registers.write(Register::A, val.rotate_right(1));
-    }
-
-    pub(super) fn instr_0x10(&mut self, _mem: &mut VirtualMemory) {
-        todo!();
-    }
-
-    // LD DE, u16
-    pub(super) fn instr_0x11(&mut self, mem: &mut VirtualMemory) {
-        self.op_LD_registerpair_from_u16(RegisterPair::DE, mem);
-    }
-
-    // LD (DE), A
-    pub(super) fn instr_0x12(&mut self, mem: &mut VirtualMemory) {
-        self.op_LD_reg_from_regpairptr(Register::A, RegisterPair::DE, mem);
-    }
-
-    // INC DE
-    pub(super) fn instr_0x13(&mut self, _mem: &mut VirtualMemory) {
-        self.op_INC_regpair(RegisterPair::DE);
-    }
-
-    // INC D
-    pub(super) fn instr_0x14(&mut self, _mem: &mut VirtualMemory) {
-        self.op_INC_reg(Register::D);
-    }
-
-    // DEC D
-    pub(super) fn instr_0x15(&mut self, _mem: &mut VirtualMemory) {
-        self.op_DEC_reg(Register::D);
-    }
-
-    // LD D, u8
-    pub(super) fn instr_0x16(&mut self, mem: &mut VirtualMemory) {
-        self.op_LD_reg_from_u8(Register::D, mem);
-    }
-
-    // RLA
-    pub(super) fn instr_0x17(&mut self, _mem: &mut VirtualMemory) {
-        let val = self.registers.read(Register::A);
-        let old_cy = self.registers.get_flags().cy;
-        self.registers.set_flags(&FlagRegister {
-            z: false,
-            n: false,
-            h: false,
-            cy: index_bitmap(val, 7),
-        });
-        let result = (val << 1) | (old_cy as u8);
-        self.registers.write(Register::A, result);
-    }
-
-    // JR i8
-    pub(super) fn instr_0x18(&mut self, mem: &mut VirtualMemory) {
-        let operand = self.fetch_and_incr_pc(mem) as i8;
-        self.pc = add_i8_to_u16(self.pc, operand).0;
-    }
-
-    // ADD HL, DE
-    pub(super) fn instr_0x19(&mut self, _mem: &mut VirtualMemory) {
-        self.op_ADD_regpair(RegisterPair::DE);
-    }
-
-    // LD A, (DE)
-    pub(super) fn instr_0x1A(&mut self, mem: &mut VirtualMemory) {
-        self.op_LD_reg_from_regpairptr(Register::A, RegisterPair::DE, mem);
-    }
-
-    // DEC DE
-    pub(super) fn instr_0x1B(&mut self, _mem: &mut VirtualMemory) {
-        self.op_DEC_regpair(RegisterPair::DE);
-    }
-
-    // INC E
-    pub(super) fn instr_0x1C(&mut self, _mem: &mut VirtualMemory) {
-        self.op_INC_reg(Register::E);
-    }
-
-    // DEC E
-    pub(super) fn instr_0x1D(&mut self, _mem: &mut VirtualMemory) {
-        self.op_DEC_reg(Register::E);
-    }
-
-    // LD E, u8
-    pub(super) fn instr_0x1E(&mut self, mem: &mut VirtualMemory) {
-        self.op_LD_reg_from_u8(Register::E, mem);
-    }
-
-    // RRA
-    pub(super) fn instr_0x1F(&mut self, _mem: &mut VirtualMemory) {
-        let val = self.registers.read(Register::A);
-        let old_cy = self.registers.get_flags().cy;
-        self.registers.set_flags(&FlagRegister {
-            z: false,
-            n: false,
-            h: false,
-            cy: index_bitmap(val, 0),
-        });
-        let result = ((old_cy as u8) << 7) | (val >> 1);
-        self.registers.write(Register::A, result);
-    }
-
-    // JR NZ, i8
-    pub(super) fn instr_0x20(&mut self, mem: &mut VirtualMemory) {
-        let operand = self.fetch_and_incr_pc(mem) as i8;
-        if !self.registers.get_flags().z {
-            self.pc = add_i8_to_u16(self.pc, operand).0;
-        }
-    }
-
-    // LD HL, u16
-    pub(super) fn instr_0x21(&mut self, mem: &mut VirtualMemory) {
-        self.op_LD_registerpair_from_u16(RegisterPair::HL, mem);
-    }
-
-    // LD (HLI), A
-    pub(super) fn instr_0x22(&mut self, mem: &mut VirtualMemory) {
-        self.op_LD_regpairptr_from_reg(RegisterPair::HL, Register::A, mem);
-        let new_hl = self.registers.read_pair(RegisterPair::HL).wrapping_add(1);
-        self.registers.write_pair(RegisterPair::HL, new_hl);
-    }
-
-    // INC HL
-    pub(super) fn instr_0x23(&mut self, _mem: &mut VirtualMemory) {
-        self.op_INC_regpair(RegisterPair::HL);
-    }
-
-    // INC H
-    pub(super) fn instr_0x24(&mut self, _mem: &mut VirtualMemory) {
-        self.op_INC_reg(Register::H);
-    }
-
-    // DEC H
-    pub(super) fn instr_0x25(&mut self, _mem: &mut VirtualMemory) {
-        self.op_DEC_reg(Register::H);
-    }
-
-    // LD H, u8
-    pub(super) fn instr_0x26(&mut self, mem: &mut VirtualMemory) {
-        self.op_LD_reg_from_u8(Register::H, mem);
-    }
-
-    pub(super) fn instr_0x27(&mut self, _mem: &mut VirtualMemory) {
-        todo!();
-    }
-
-    // JR Z, i8
-    pub(super) fn instr_0x28(&mut self, mem: &mut VirtualMemory) {
-        let operand = self.fetch_and_incr_pc(mem) as i8;
-        if self.registers.get_flags().z {
-            self.pc = add_i8_to_u16(self.pc, operand).0;
-        }
-    }
-
-    // ADD HL, HL
-    pub(super) fn instr_0x29(&mut self, _mem: &mut VirtualMemory) {
-        self.op_ADD_regpair(RegisterPair::HL);
-    }
-
-    // LD A, (HLI)
-    pub(super) fn instr_0x2A(&mut self, mem: &mut VirtualMemory) {
-        self.op_LD_reg_from_regpairptr(Register::A, RegisterPair::HL, mem);
-        let new_hl = self.registers.read_pair(RegisterPair::HL).wrapping_add(1);
-        self.registers.write_pair(RegisterPair::HL, new_hl);
-    }
-
-    // DEC HL
-    pub(super) fn instr_0x2B(&mut self, _mem: &mut VirtualMemory) {
-        self.op_DEC_regpair(RegisterPair::HL);
-    }
-
-    // INC L
-    pub(super) fn instr_0x2C(&mut self, _mem: &mut VirtualMemory) {
-        self.op_INC_reg(Register::L);
-    }
-
-    // DEC L
-    pub(super) fn instr_0x2D(&mut self, _mem: &mut VirtualMemory) {
-        self.op_DEC_reg(Register::L);
-    }
-
-    // LD L, u8
-    pub(super) fn instr_0x2E(&mut self, mem: &mut VirtualMemory) {
-        self.op_LD_reg_from_u8(Register::L, mem);
-    }
-
-    pub(super) fn instr_0x2F(&mut self, _mem: &mut VirtualMemory) {
-        todo!();
-    }
-
-    // JR NC, i8
-    pub(super) fn instr_0x30(&mut self, mem: &mut VirtualMemory) {
-        let operand = self.fetch_and_incr_pc(mem) as i8;
-        if !self.registers.get_flags().cy {
-            self.pc = add_i8_to_u16(self.pc, operand).0;
-        }
-    }
-
-    // LD SP, u16
-    pub(super) fn instr_0x31(&mut self, mem: &mut VirtualMemory) {
-        self.sp = self.fetch_and_incr_pc_16(mem);
-    }
-
-    // LD (HLD), A
-    pub(super) fn instr_0x32(&mut self, mem: &mut VirtualMemory) {
-        self.op_LD_regpairptr_from_reg(RegisterPair::HL, Register::A, mem);
-        let new_hl = self.registers.read_pair(RegisterPair::HL).wrapping_sub(1);
-        self.registers.write_pair(RegisterPair::HL, new_hl);
-    }
-
-    // INC SP
-    pub(super) fn instr_0x33(&mut self, _mem: &mut VirtualMemory) {
-        self.sp = self.sp.wrapping_add(1);
-    }
-
-    // INC (HL)
-    pub(super) fn instr_0x34(&mut self, mem: &mut VirtualMemory) {
-        let addr = self.registers.read_pair(RegisterPair::HL);
-        let lhs = mem.read(addr);
-        let (result, carries) = add_and_get_carries(lhs, 1);
-        mem.write(addr, result);
-
-        self.registers.set_flags(&FlagRegister {
-            z: result == 0,
-            n: false,
-            h: index_bitmap(carries, 3),
-            cy: self.registers.get_flags().cy,
-        });
-    }
-
-    // DEC (HL)
-    pub(super) fn instr_0x35(&mut self, mem: &mut VirtualMemory) {
-        let addr = self.registers.read_pair(RegisterPair::HL);
-        let lhs = mem.read(addr);
-        let (result, borrows) = subtract_and_get_borrows(lhs, 1);
-        mem.write(addr, result);
-
-        self.registers.set_flags(&FlagRegister {
-            z: result == 0,
-            n: true,
-            h: index_bitmap(borrows, 3),
-            cy: self.registers.get_flags().cy,
-        });
-    }
-
-    // LD (HL), u8
-    pub(super) fn instr_0x36(&mut self, mem: &mut VirtualMemory) {
-        self.op_LD_regpairptr_from_u8(RegisterPair::HL, mem);
-    }
-
-    pub(super) fn instr_0x37(&mut self, _mem: &mut VirtualMemory) {
-        todo!();
-    }
-
-    // JR C, i8
-    pub(super) fn instr_0x38(&mut self, mem: &mut VirtualMemory) {
-        let operand = self.fetch_and_incr_pc(mem) as i8;
-        if self.registers.get_flags().cy {
-            self.pc = add_i8_to_u16(self.pc, operand).0;
-        }
-    }
-
-    // ADD HL, SP
-    pub(super) fn instr_0x39(&mut self, _mem: &mut VirtualMemory) {
-        self.op_ADD_u16(self.sp);
-    }
-
-    // LD A, (HLD)
-    pub(super) fn instr_0x3A(&mut self, mem: &mut VirtualMemory) {
-        self.op_LD_reg_from_regpairptr(Register::A, RegisterPair::HL, mem);
-        let new_hl = self.registers.read_pair(RegisterPair::HL).wrapping_sub(1);
-        self.registers.write_pair(RegisterPair::HL, new_hl);
-    }
-
-    // DEC SP
-    pub(super) fn instr_0x3B(&mut self, _mem: &mut VirtualMemory) {
-        self.sp = self.sp.wrapping_sub(1);
-    }
-
-    // INC A
-    pub(super) fn instr_0x3C(&mut self, _mem: &mut VirtualMemory) {
-        self.op_INC_reg(Register::A);
-    }
-
-    pub(super) fn instr_0x3D(&mut self, _mem: &mut VirtualMemory) {
-        todo!();
-    }
-
-    // LD A, u8
-    pub(super) fn instr_0x3E(&mut self, mem: &mut VirtualMemory) {
-        self.op_LD_reg_from_u8(Register::A, mem);
-    }
-
-    pub(super) fn instr_0x3F(&mut self, _mem: &mut VirtualMemory) {
-        todo!();
-    }
-
-    // LD B, B
-    pub(super) fn instr_0x40(&mut self, _mem: &mut VirtualMemory) {
-        self.op_LD_reg_from_reg(Register::B, Register::B);
-    }
-
-    // LD B, C
-    pub(super) fn instr_0x41(&mut self, _mem: &mut VirtualMemory) {
-        self.op_LD_reg_from_reg(Register::B, Register::C);
-    }
-
-    // LD B, D
-    pub(super) fn instr_0x42(&mut self, _mem: &mut VirtualMemory) {
-        self.op_LD_reg_from_reg(Register::B, Register::D);
-    }
-
-    // LD B, E
-    pub(super) fn instr_0x43(&mut self, _mem: &mut VirtualMemory) {
-        self.op_LD_reg_from_reg(Register::B, Register::E);
-    }
-
-    // LD B, H
-    pub(super) fn instr_0x44(&mut self, _mem: &mut VirtualMemory) {
-        self.op_LD_reg_from_reg(Register::B, Register::H);
-    }
-
-    // LD B, L
-    pub(super) fn instr_0x45(&mut self, _mem: &mut VirtualMemory) {
-        self.op_LD_reg_from_reg(Register::B, Register::L);
-    }
-
-    // LD B, (HL)
-    pub(super) fn instr_0x46(&mut self, mem: &mut VirtualMemory) {
-        self.op_LD_reg_from_regpairptr(Register::B, RegisterPair::HL, mem);
-    }
-
-    // LD B, A
-    pub(super) fn instr_0x47(&mut self, _mem: &mut VirtualMemory) {
-        self.op_LD_reg_from_reg(Register::B, Register::A);
-    }
-
-    // LD C, B
-    pub(super) fn instr_0x48(&mut self, _mem: &mut VirtualMemory) {
-        self.op_LD_reg_from_reg(Register::C, Register::B);
-    }
-
-    // LD C, C
-    pub(super) fn instr_0x49(&mut self, _mem: &mut VirtualMemory) {
-        self.op_LD_reg_from_reg(Register::C, Register::C);
-    }
-
-    // LD C, D
-    pub(super) fn instr_0x4A(&mut self, _mem: &mut VirtualMemory) {
-        self.op_LD_reg_from_reg(Register::C, Register::D);
-    }
-
-    // LD C, E
-    pub(super) fn instr_0x4B(&mut self, _mem: &mut VirtualMemory) {
-        self.op_LD_reg_from_reg(Register::C, Register::E);
-    }
-
-    // LD C, H
-    pub(super) fn instr_0x4C(&mut self, _mem: &mut VirtualMemory) {
-        self.op_LD_reg_from_reg(Register::C, Register::H);
-    }
-
-    // LD C, L
-    pub(super) fn instr_0x4D(&mut self, _mem: &mut VirtualMemory) {
-        self.op_LD_reg_from_reg(Register::C, Register::L);
-    }
-
-    // LD C, (HL)
-    pub(super) fn instr_0x4E(&mut self, mem: &mut VirtualMemory) {
-        self.op_LD_reg_from_regpairptr(Register::C, RegisterPair::HL, mem);
-    }
-
-    // LD C, A
-    pub(super) fn instr_0x4F(&mut self, _mem: &mut VirtualMemory) {
-        self.op_LD_reg_from_reg(Register::C, Register::A);
-    }
-
-    // LD D, B
-    pub(super) fn instr_0x50(&mut self, _mem: &mut VirtualMemory) {
-        self.op_LD_reg_from_reg(Register::D, Register::B);
-    }
-
-    // LD D, C
-    pub(super) fn instr_0x51(&mut self, _mem: &mut VirtualMemory) {
-        self.op_LD_reg_from_reg(Register::D, Register::C);
-    }
-
-    // LD D, D
-    pub(super) fn instr_0x52(&mut self, _mem: &mut VirtualMemory) {
-        self.op_LD_reg_from_reg(Register::D, Register::D);
-    }
-
-    // LD D, E
-    pub(super) fn instr_0x53(&mut self, _mem: &mut VirtualMemory) {
-        self.op_LD_reg_from_reg(Register::D, Register::E);
-    }
-
-    // LD D, H
-    pub(super) fn instr_0x54(&mut self, _mem: &mut VirtualMemory) {
-        self.op_LD_reg_from_reg(Register::D, Register::H);
-    }
-
-    // LD D, L
-    pub(super) fn instr_0x55(&mut self, _mem: &mut VirtualMemory) {
-        self.op_LD_reg_from_reg(Register::D, Register::L);
-    }
-
-    // LD D, (HL)
-    pub(super) fn instr_0x56(&mut self, mem: &mut VirtualMemory) {
-        self.op_LD_reg_from_regpairptr(Register::D, RegisterPair::HL, mem);
-    }
-
-    // LD D, A
-    pub(super) fn instr_0x57(&mut self, _mem: &mut VirtualMemory) {
-        self.op_LD_reg_from_reg(Register::D, Register::A);
-    }
-
-    // LD E, B
-    pub(super) fn instr_0x58(&mut self, _mem: &mut VirtualMemory) {
-        self.op_LD_reg_from_reg(Register::E, Register::B);
-    }
-
-    // LD E, C
-    pub(super) fn instr_0x59(&mut self, _mem: &mut VirtualMemory) {
-        self.op_LD_reg_from_reg(Register::E, Register::C);
-    }
-
-    // LD E, D
-    pub(super) fn instr_0x5A(&mut self, _mem: &mut VirtualMemory) {
-        self.op_LD_reg_from_reg(Register::E, Register::D);
-    }
-
-    // LD E, E
-    pub(super) fn instr_0x5B(&mut self, _mem: &mut VirtualMemory) {
-        self.op_LD_reg_from_reg(Register::E, Register::E);
-    }
-
-    // LD E, H
-    pub(super) fn instr_0x5C(&mut self, _mem: &mut VirtualMemory) {
-        self.op_LD_reg_from_reg(Register::E, Register::H);
-    }
-
-    // LD E, L
-    pub(super) fn instr_0x5D(&mut self, _mem: &mut VirtualMemory) {
-        self.op_LD_reg_from_reg(Register::E, Register::L);
-    }
-
-    // LD E, (HL)
-    pub(super) fn instr_0x5E(&mut self, mem: &mut VirtualMemory) {
-        self.op_LD_reg_from_regpairptr(Register::E, RegisterPair::HL, mem);
-    }
-
-    // LD E, A
-    pub(super) fn instr_0x5F(&mut self, _mem: &mut VirtualMemory) {
-        self.op_LD_reg_from_reg(Register::E, Register::A);
-    }
-
-    // LD H, B
-    pub(super) fn instr_0x60(&mut self, _mem: &mut VirtualMemory) {
-        self.op_LD_reg_from_reg(Register::H, Register::B);
-    }
-
-    // LD H, C
-    pub(super) fn instr_0x61(&mut self, _mem: &mut VirtualMemory) {
-        self.op_LD_reg_from_reg(Register::H, Register::C);
-    }
-
-    // LD H, D
-    pub(super) fn instr_0x62(&mut self, _mem: &mut VirtualMemory) {
-        self.op_LD_reg_from_reg(Register::H, Register::D);
-    }
-
-    // LD H, E
-    pub(super) fn instr_0x63(&mut self, _mem: &mut VirtualMemory) {
-        self.op_LD_reg_from_reg(Register::H, Register::E);
-    }
-
-    // LD H, H
-    pub(super) fn instr_0x64(&mut self, _mem: &mut VirtualMemory) {
-        self.op_LD_reg_from_reg(Register::H, Register::H);
-    }
-
-    // LD H, L
-    pub(super) fn instr_0x65(&mut self, _mem: &mut VirtualMemory) {
-        self.op_LD_reg_from_reg(Register::H, Register::L);
-    }
-
-    // LD H, (HL)
-    pub(super) fn instr_0x66(&mut self, mem: &mut VirtualMemory) {
-        self.op_LD_reg_from_regpairptr(Register::H, RegisterPair::HL, mem);
-    }
-
-    // LD H, A
-    pub(super) fn instr_0x67(&mut self, _mem: &mut VirtualMemory) {
-        self.op_LD_reg_from_reg(Register::H, Register::A);
-    }
-
-    // LD L, B
-    pub(super) fn instr_0x68(&mut self, _mem: &mut VirtualMemory) {
-        self.op_LD_reg_from_reg(Register::L, Register::B);
-    }
-
-    // LD L, C
-    pub(super) fn instr_0x69(&mut self, _mem: &mut VirtualMemory) {
-        self.op_LD_reg_from_reg(Register::L, Register::C);
-    }
-
-    // LD L, D
-    pub(super) fn instr_0x6A(&mut self, _mem: &mut VirtualMemory) {
-        self.op_LD_reg_from_reg(Register::L, Register::D);
-    }
-
-    // LD L, E
-    pub(super) fn instr_0x6B(&mut self, _mem: &mut VirtualMemory) {
-        self.op_LD_reg_from_reg(Register::L, Register::E);
-    }
-
-    // LD L, H
-    pub(super) fn instr_0x6C(&mut self, _mem: &mut VirtualMemory) {
-        self.op_LD_reg_from_reg(Register::L, Register::H);
-    }
-
-    // LD L, L
-    pub(super) fn instr_0x6D(&mut self, _mem: &mut VirtualMemory) {
-        self.op_LD_reg_from_reg(Register::L, Register::L);
-    }
-
-    // LD L, (HL)
-    pub(super) fn instr_0x6E(&mut self, mem: &mut VirtualMemory) {
-        self.op_LD_reg_from_regpairptr(Register::L, RegisterPair::HL, mem);
-    }
-
-    // LD L, A
-    pub(super) fn instr_0x6F(&mut self, _mem: &mut VirtualMemory) {
-        self.op_LD_reg_from_reg(Register::L, Register::A);
-    }
-
-    // LD (HL). B
-    pub(super) fn instr_0x70(&mut self, mem: &mut VirtualMemory) {
-        self.op_LD_regpairptr_from_reg(RegisterPair::HL, Register::B, mem);
-    }
-
-    // LD (HL). C
-    pub(super) fn instr_0x71(&mut self, mem: &mut VirtualMemory) {
-        self.op_LD_regpairptr_from_reg(RegisterPair::HL, Register::C, mem);
-    }
-
-    // LD (HL). D
-    pub(super) fn instr_0x72(&mut self, mem: &mut VirtualMemory) {
-        self.op_LD_regpairptr_from_reg(RegisterPair::HL, Register::D, mem);
-    }
-
-    // LD (HL). E
-    pub(super) fn instr_0x73(&mut self, mem: &mut VirtualMemory) {
-        self.op_LD_regpairptr_from_reg(RegisterPair::HL, Register::E, mem);
-    }
-
-    // LD (HL). H
-    pub(super) fn instr_0x74(&mut self, mem: &mut VirtualMemory) {
-        self.op_LD_regpairptr_from_reg(RegisterPair::HL, Register::H, mem);
-    }
-
-    // LD (HL). L
-    pub(super) fn instr_0x75(&mut self, mem: &mut VirtualMemory) {
-        self.op_LD_regpairptr_from_reg(RegisterPair::HL, Register::L, mem);
-    }
-
-    pub(super) fn instr_0x76(&mut self, _mem: &mut VirtualMemory) {
-        todo!();
-    }
-
-    // LD (HL), A
-    pub(super) fn instr_0x77(&mut self, mem: &mut VirtualMemory) {
-        self.op_LD_regpairptr_from_reg(RegisterPair::HL, Register::A, mem);
-    }
-
-    // LD A, B
-    pub(super) fn instr_0x78(&mut self, _mem: &mut VirtualMemory) {
-        self.op_LD_reg_from_reg(Register::A, Register::B);
-    }
-
-    // LD A, C
-    pub(super) fn instr_0x79(&mut self, _mem: &mut VirtualMemory) {
-        self.op_LD_reg_from_reg(Register::A, Register::C);
-    }
-
-    // LD A, D
-    pub(super) fn instr_0x7A(&mut self, _mem: &mut VirtualMemory) {
-        self.op_LD_reg_from_reg(Register::A, Register::D);
-    }
-
-    // LD A, E
-    pub(super) fn instr_0x7B(&mut self, _mem: &mut VirtualMemory) {
-        self.op_LD_reg_from_reg(Register::A, Register::E);
-    }
-
-    // LD A, H
-    pub(super) fn instr_0x7C(&mut self, _mem: &mut VirtualMemory) {
-        self.op_LD_reg_from_reg(Register::A, Register::H);
-    }
-
-    // LD A, L
-    pub(super) fn instr_0x7D(&mut self, _mem: &mut VirtualMemory) {
-        self.op_LD_reg_from_reg(Register::A, Register::L);
-    }
-
-    // LD A, (HL)
-    pub(super) fn instr_0x7E(&mut self, mem: &mut VirtualMemory) {
-        self.op_LD_reg_from_regpairptr(Register::A, RegisterPair::HL, mem);
-    }
-
-    // LD A, A
-    pub(super) fn instr_0x7F(&mut self, _mem: &mut VirtualMemory) {
-        self.op_LD_reg_from_reg(Register::A, Register::A);
-    }
-
-    // ADD A, B
-    pub(super) fn instr_0x80(&mut self, _mem: &mut VirtualMemory) {
-        self.op_ADD_reg(Register::B);
-    }
-
-    // Add A, C
-    pub(super) fn instr_0x81(&mut self, _mem: &mut VirtualMemory) {
-        self.op_ADD_reg(Register::C);
-    }
-
-    // Add A, D
-    pub(super) fn instr_0x82(&mut self, _mem: &mut VirtualMemory) {
-        self.op_ADD_reg(Register::D);
-    }
-
-    // Add A, E
-    pub(super) fn instr_0x83(&mut self, _mem: &mut VirtualMemory) {
-        self.op_ADD_reg(Register::E);
-    }
-
-    // Add A, H
-    pub(super) fn instr_0x84(&mut self, _mem: &mut VirtualMemory) {
-        self.op_ADD_reg(Register::H);
-    }
-
-    // Add A, L
-    pub(super) fn instr_0x85(&mut self, _mem: &mut VirtualMemory) {
-        self.op_ADD_reg(Register::L);
-    }
-
-    // ADD A, (HL)
-    pub(super) fn instr_0x86(&mut self, mem: &mut VirtualMemory) {
-        let addr = self.registers.read_pair(RegisterPair::HL);
-        let val = mem.read(addr);
-        self.op_ADD(val);
-    }
-
-    // Add A, A
-    pub(super) fn instr_0x87(&mut self, _mem: &mut VirtualMemory) {
-        self.op_ADD_reg(Register::A);
-    }
-
-    // ADC A, B
-    pub(super) fn instr_0x88(&mut self, _mem: &mut VirtualMemory) {
-        self.op_ADC_reg(Register::B);
-    }
-
-    // ADC A, C
-    pub(super) fn instr_0x89(&mut self, _mem: &mut VirtualMemory) {
-        self.op_ADC_reg(Register::C);
-    }
-
-    // ADC A, D
-    pub(super) fn instr_0x8A(&mut self, _mem: &mut VirtualMemory) {
-        self.op_ADC_reg(Register::D);
-    }
-
-    // ADC A, E
-    pub(super) fn instr_0x8B(&mut self, _mem: &mut VirtualMemory) {
-        self.op_ADC_reg(Register::E);
-    }
-
-    // ADC A, H
-    pub(super) fn instr_0x8C(&mut self, _mem: &mut VirtualMemory) {
-        self.op_ADC_reg(Register::H);
-    }
-
-    // ADC A, L
-    pub(super) fn instr_0x8D(&mut self, _mem: &mut VirtualMemory) {
-        self.op_ADC_reg(Register::L);
-    }
-
-    // ADC A, (HL)
-    pub(super) fn instr_0x8E(&mut self, mem: &mut VirtualMemory) {
-        let addr = self.registers.read_pair(RegisterPair::HL);
-        let val = mem.read(addr);
-        self.op_ADC(val);
-    }
-
-    // ADC A, A
-    pub(super) fn instr_0x8F(&mut self, _mem: &mut VirtualMemory) {
-        self.op_ADC_reg(Register::A);
-    }
-
-    // SUB B
-    pub(super) fn instr_0x90(&mut self, _mem: &mut VirtualMemory) {
-        self.op_SUB_reg(Register::B);
-    }
-
-    // SUB C
-    pub(super) fn instr_0x91(&mut self, _mem: &mut VirtualMemory) {
-        self.op_SUB_reg(Register::C);
-    }
-
-    // SUB D
-    pub(super) fn instr_0x92(&mut self, _mem: &mut VirtualMemory) {
-        self.op_SUB_reg(Register::D);
-    }
-
-    // SUB E
-    pub(super) fn instr_0x93(&mut self, _mem: &mut VirtualMemory) {
-        self.op_SUB_reg(Register::E);
-    }
-
-    // SUB H
-    pub(super) fn instr_0x94(&mut self, _mem: &mut VirtualMemory) {
-        self.op_SUB_reg(Register::H);
-    }
-
-    // SUB L
-    pub(super) fn instr_0x95(&mut self, _mem: &mut VirtualMemory) {
-        self.op_SUB_reg(Register::L);
-    }
-
-    // SUB (HL)
-    pub(super) fn instr_0x96(&mut self, mem: &mut VirtualMemory) {
-        let addr = self.registers.read_pair(RegisterPair::HL);
-        let val = mem.read(addr);
-        self.op_SUB(val);
-    }
-
-    // SUB A
-    pub(super) fn instr_0x97(&mut self, _mem: &mut VirtualMemory) {
-        self.op_SUB_reg(Register::A);
-    }
-
-    // SBC A, B
-    pub(super) fn instr_0x98(&mut self, _mem: &mut VirtualMemory) {
-        self.op_SBC_reg(Register::B);
-    }
-
-    // SBC A, C
-    pub(super) fn instr_0x99(&mut self, _mem: &mut VirtualMemory) {
-        self.op_SBC_reg(Register::C);
-    }
-
-    // SBC A, D
-    pub(super) fn instr_0x9A(&mut self, _mem: &mut VirtualMemory) {
-        self.op_SBC_reg(Register::D);
-    }
-
-    // SBC A, E
-    pub(super) fn instr_0x9B(&mut self, _mem: &mut VirtualMemory) {
-        self.op_SBC_reg(Register::E);
-    }
-
-    // SBC A, H
-    pub(super) fn instr_0x9C(&mut self, _mem: &mut VirtualMemory) {
-        self.op_SBC_reg(Register::H);
-    }
-
-    // SBC A, L
-    pub(super) fn instr_0x9D(&mut self, _mem: &mut VirtualMemory) {
-        self.op_SBC_reg(Register::L);
-    }
-
-    // SBC A, (HL)
-    pub(super) fn instr_0x9E(&mut self, mem: &mut VirtualMemory) {
-        let addr = self.registers.read_pair(RegisterPair::HL);
-        let val = mem.read(addr);
-        self.op_SBC(val);
-    }
-
-    // SBC A, A
-    pub(super) fn instr_0x9F(&mut self, _mem: &mut VirtualMemory) {
-        self.op_SBC_reg(Register::A);
-    }
-
-    // AND B
-    pub(super) fn instr_0xA0(&mut self, _mem: &mut VirtualMemory) {
-        self.op_AND_reg(Register::B);
-    }
-
-    // AND C
-    pub(super) fn instr_0xA1(&mut self, _mem: &mut VirtualMemory) {
-        self.op_AND_reg(Register::C);
-    }
-
-    // AND D
-    pub(super) fn instr_0xA2(&mut self, _mem: &mut VirtualMemory) {
-        self.op_AND_reg(Register::D);
-    }
-
-    // AND E
-    pub(super) fn instr_0xA3(&mut self, _mem: &mut VirtualMemory) {
-        self.op_AND_reg(Register::E);
-    }
-
-    // AND H
-    pub(super) fn instr_0xA4(&mut self, _mem: &mut VirtualMemory) {
-        self.op_AND_reg(Register::H);
-    }
-
-    // AND L
-    pub(super) fn instr_0xA5(&mut self, _mem: &mut VirtualMemory) {
-        self.op_AND_reg(Register::L);
-    }
-
-    // AND (HL)
-    pub(super) fn instr_0xA6(&mut self, mem: &mut VirtualMemory) {
-        let addr = self.registers.read_pair(RegisterPair::HL);
-        let val = mem.read(addr);
-        self.op_AND(val);
-    }
-
-    // AND A
-    pub(super) fn instr_0xA7(&mut self, _mem: &mut VirtualMemory) {
-        self.op_AND_reg(Register::A);
-    }
-
-    // XOR B
-    pub(super) fn instr_0xA8(&mut self, _mem: &mut VirtualMemory) {
-        self.op_XOR_reg(Register::B);
-    }
-
-    // XOR C
-    pub(super) fn instr_0xA9(&mut self, _mem: &mut VirtualMemory) {
-        self.op_XOR_reg(Register::C);
-    }
-
-    // XOR D
-    pub(super) fn instr_0xAA(&mut self, _mem: &mut VirtualMemory) {
-        self.op_XOR_reg(Register::D);
-    }
-
-    // XOR E
-    pub(super) fn instr_0xAB(&mut self, _mem: &mut VirtualMemory) {
-        self.op_XOR_reg(Register::E);
-    }
-
-    // XOR H
-    pub(super) fn instr_0xAC(&mut self, _mem: &mut VirtualMemory) {
-        self.op_XOR_reg(Register::H);
-    }
-
-    // XOR L
-    pub(super) fn instr_0xAD(&mut self, _mem: &mut VirtualMemory) {
-        self.op_XOR_reg(Register::L);
-    }
-
-    // XOR (HL)
-    pub(super) fn instr_0xAE(&mut self, mem: &mut VirtualMemory) {
-        let addr = self.registers.read_pair(RegisterPair::HL);
-        let val = mem.read(addr);
-        self.op_XOR(val);
-    }
-
-    // XOR A
-    pub(super) fn instr_0xAF(&mut self, _mem: &mut VirtualMemory) {
-        self.op_XOR_reg(Register::A);
-    }
-
-    // OR B
-    pub(super) fn instr_0xB0(&mut self, _mem: &mut VirtualMemory) {
-        self.op_OR_reg(Register::B);
-    }
-
-    // OR C
-    pub(super) fn instr_0xB1(&mut self, _mem: &mut VirtualMemory) {
-        self.op_OR_reg(Register::C);
-    }
-
-    // OR D
-    pub(super) fn instr_0xB2(&mut self, _mem: &mut VirtualMemory) {
-        self.op_OR_reg(Register::D);
-    }
-
-    // OR E
-    pub(super) fn instr_0xB3(&mut self, _mem: &mut VirtualMemory) {
-        self.op_OR_reg(Register::E);
-    }
-
-    // OR H
-    pub(super) fn instr_0xB4(&mut self, _mem: &mut VirtualMemory) {
-        self.op_OR_reg(Register::H);
-    }
-
-    // OR L
-    pub(super) fn instr_0xB5(&mut self, _mem: &mut VirtualMemory) {
-        self.op_OR_reg(Register::L);
-    }
-
-    // OR (HL)
-    pub(super) fn instr_0xB6(&mut self, mem: &mut VirtualMemory) {
-        let addr = self.registers.read_pair(RegisterPair::HL);
-        let val = mem.read(addr);
-        self.op_OR(val);
-    }
-
-    // OR A
-    pub(super) fn instr_0xB7(&mut self, _mem: &mut VirtualMemory) {
-        self.op_OR_reg(Register::A);
-    }
-
-    // CP B
-    pub(super) fn instr_0xB8(&mut self, _mem: &mut VirtualMemory) {
-        self.op_CP_reg(Register::B);
-    }
-
-    // CP C
-    pub(super) fn instr_0xB9(&mut self, _mem: &mut VirtualMemory) {
-        self.op_CP_reg(Register::C);
-    }
-
-    // CP D
-    pub(super) fn instr_0xBA(&mut self, _mem: &mut VirtualMemory) {
-        self.op_CP_reg(Register::D);
-    }
-
-    // CP E
-    pub(super) fn instr_0xBB(&mut self, _mem: &mut VirtualMemory) {
-        self.op_CP_reg(Register::E);
-    }
-
-    // CP H
-    pub(super) fn instr_0xBC(&mut self, _mem: &mut VirtualMemory) {
-        self.op_CP_reg(Register::H);
-    }
-
-    // CP L
-    pub(super) fn instr_0xBD(&mut self, _mem: &mut VirtualMemory) {
-        self.op_CP_reg(Register::L);
-    }
-
-    // CP (HL)
-    pub(super) fn instr_0xBE(&mut self, mem: &mut VirtualMemory) {
-        let addr = self.registers.read_pair(RegisterPair::HL);
-        let val = mem.read(addr);
-        self.op_CP(val);
-    }
-
-    // CP A
-    pub(super) fn instr_0xBF(&mut self, _mem: &mut VirtualMemory) {
-        self.op_CP_reg(Register::A);
-    }
-
-    pub(super) fn instr_0xC0(&mut self, _mem: &mut VirtualMemory) {
-        todo!();
-    }
-
-    // POP BC
-    pub(super) fn instr_0xC1(&mut self, mem: &mut VirtualMemory) {
-        self.op_POP_stack_to_regpair(RegisterPair::BC, mem);
-    }
-
-    // JP NZ, u16
-    pub(super) fn instr_0xC2(&mut self, mem: &mut VirtualMemory) {
-        let new_pc = self.fetch_and_incr_pc_16(mem);
-        if !self.registers.get_flags().z {
-            self.pc = new_pc;
-        }
-    }
-
-    // JP u16
-    pub(super) fn instr_0xC3(&mut self, mem: &mut VirtualMemory) {
-        self.pc = self.fetch_and_incr_pc_16(mem);
-    }
-
-    // CALL NZ, u16
-    pub(super) fn instr_0xC4(&mut self, mem: &mut VirtualMemory) {
-        let new_pc = self.fetch_and_incr_pc_16(mem);
-        if !self.registers.get_flags().z {
-            self.sp -= 1;
-            mem.write(self.sp, self.pc.high());
-            self.sp -= 1;
-            mem.write(self.sp, self.pc.low());
-            self.pc = new_pc;
-        }
-    }
-
-    // PUSH BC
-    pub(super) fn instr_0xC5(&mut self, mem: &mut VirtualMemory) {
-        self.op_PUSH_stack_from_regpair(RegisterPair::BC, mem);
-    }
-
-    // ADD A, u8
-    pub(super) fn instr_0xC6(&mut self, mem: &mut VirtualMemory) {
-        let src_val = self.fetch_and_incr_pc(mem) as u8;
-        self.op_ADD(src_val);
-    }
-
-    pub(super) fn instr_0xC7(&mut self, _mem: &mut VirtualMemory) {
-        todo!();
-    }
-
-    pub(super) fn instr_0xC8(&mut self, _mem: &mut VirtualMemory) {
-        todo!();
-    }
-
-    pub(super) fn instr_0xC9(&mut self, _mem: &mut VirtualMemory) {
-        todo!();
-    }
-
-    // JP Z, u16
-    pub(super) fn instr_0xCA(&mut self, mem: &mut VirtualMemory) {
-        let new_pc = self.fetch_and_incr_pc_16(mem);
-        if self.registers.get_flags().z {
-            self.pc = new_pc;
-        }
-    }
-
-    // Prefix for second instruction set
-    pub(super) fn instr_0xCB(&mut self, mem: &mut VirtualMemory) {
-        let instr = self.fetch_and_incr_pc(mem);
-        let instruction_impl = map_CB_prefix_instruction(instr);
-        instruction_impl(self, mem);
-    }
-
-    // CALL Z, u16
-    pub(super) fn instr_0xCC(&mut self, mem: &mut VirtualMemory) {
-        let new_pc = self.fetch_and_incr_pc_16(mem);
-        if self.registers.get_flags().z {
-            self.sp -= 1;
-            mem.write(self.sp, self.pc.high());
-            self.sp -= 1;
-            mem.write(self.sp, self.pc.low());
-            self.pc = new_pc;
-        }
-    }
-
-    // CALL u16
-    pub(super) fn instr_0xCD(&mut self, mem: &mut VirtualMemory) {
-        let new_pc = self.fetch_and_incr_pc_16(mem);
-        self.sp -= 1;
-        mem.write(self.sp, self.pc.high());
-        self.sp -= 1;
-        mem.write(self.sp, self.pc.low());
-        self.pc = new_pc;
-    }
-
-    // ADC A, u8
-    pub(super) fn instr_0xCE(&mut self, mem: &mut VirtualMemory) {
-        let val = self.fetch_and_incr_pc(mem);
-        self.op_ADC(val);
-    }
-
-    pub(super) fn instr_0xCF(&mut self, _mem: &mut VirtualMemory) {
-        todo!();
-    }
-
-    pub(super) fn instr_0xD0(&mut self, _mem: &mut VirtualMemory) {
-        todo!();
-    }
-
-    // POP DE
-    pub(super) fn instr_0xD1(&mut self, mem: &mut VirtualMemory) {
-        self.op_POP_stack_to_regpair(RegisterPair::DE, mem);
-    }
-
-    // JP NC, u16
-    pub(super) fn instr_0xD2(&mut self, mem: &mut VirtualMemory) {
-        let new_pc = self.fetch_and_incr_pc_16(mem);
-        if !self.registers.get_flags().cy {
-            self.pc = new_pc;
-        }
-    }
-
-    pub(super) fn instr_0xD3(&mut self, _mem: &mut VirtualMemory) {
-        todo!();
-    }
-
-    // CALL NC, u16
-    pub(super) fn instr_0xD4(&mut self, mem: &mut VirtualMemory) {
-        let new_pc = self.fetch_and_incr_pc_16(mem);
-        if !self.registers.get_flags().cy {
-            self.sp -= 1;
-            mem.write(self.sp, self.pc.high());
-            self.sp -= 1;
-            mem.write(self.sp, self.pc.low());
-            self.pc = new_pc;
-        }
-    }
-
-    // PUSH DE
-    pub(super) fn instr_0xD5(&mut self, mem: &mut VirtualMemory) {
-        self.op_PUSH_stack_from_regpair(RegisterPair::DE, mem);
-    }
-
-    // SUB u8
-    pub(super) fn instr_0xD6(&mut self, mem: &mut VirtualMemory) {
-        let val = self.fetch_and_incr_pc(mem);
-        self.op_SUB(val);
-    }
-
-    pub(super) fn instr_0xD7(&mut self, _mem: &mut VirtualMemory) {
-        todo!();
-    }
-
-    pub(super) fn instr_0xD8(&mut self, _mem: &mut VirtualMemory) {
-        todo!();
-    }
-
-    pub(super) fn instr_0xD9(&mut self, _mem: &mut VirtualMemory) {
-        todo!();
-    }
-
-    // JP C, u16
-    pub(super) fn instr_0xDA(&mut self, mem: &mut VirtualMemory) {
-        let new_pc = self.fetch_and_incr_pc_16(mem);
-        if self.registers.get_flags().cy {
-            self.pc = new_pc;
-        }
-    }
-
-    pub(super) fn instr_0xDB(&mut self, _mem: &mut VirtualMemory) {
-        todo!();
-    }
-
-    // CALL C, u16
-    pub(super) fn instr_0xDC(&mut self, mem: &mut VirtualMemory) {
-        let new_pc = self.fetch_and_incr_pc_16(mem);
-        if self.registers.get_flags().cy {
-            self.sp -= 1;
-            mem.write(self.sp, self.pc.high());
-            self.sp -= 1;
-            mem.write(self.sp, self.pc.low());
-            self.pc = new_pc;
-        }
-    }
-
-    pub(super) fn instr_0xDD(&mut self, _mem: &mut VirtualMemory) {
-        todo!();
-    }
-
-    // SBC A, u8
-    pub(super) fn instr_0xDE(&mut self, mem: &mut VirtualMemory) {
-        let val = self.fetch_and_incr_pc(mem);
-        self.op_SBC(val);
-    }
-
-    pub(super) fn instr_0xDF(&mut self, _mem: &mut VirtualMemory) {
-        todo!();
-    }
-
-    // LD (u8), A
-    pub(super) fn instr_0xE0(&mut self, mem: &mut VirtualMemory) {
-        self.op_LD_u8ptr_from_reg(Register::A, mem);
-    }
-
-    // POP HL
-    pub(super) fn instr_0xE1(&mut self, mem: &mut VirtualMemory) {
-        self.op_POP_stack_to_regpair(RegisterPair::HL, mem);
-    }
-
-    // LD (C), A
-    pub(super) fn instr_0xE2(&mut self, mem: &mut VirtualMemory) {
-        self.op_LD_regpptr_from_reg(Register::C, Register::A, mem);
-    }
-
-    pub(super) fn instr_0xE3(&mut self, _mem: &mut VirtualMemory) {
-        todo!();
-    }
-
-    pub(super) fn instr_0xE4(&mut self, _mem: &mut VirtualMemory) {
-        todo!();
-    }
-
-    // PUSH HL
-    pub(super) fn instr_0xE5(&mut self, mem: &mut VirtualMemory) {
-        self.op_PUSH_stack_from_regpair(RegisterPair::HL, mem);
-    }
-
-    // AND u8
-    pub(super) fn instr_0xE6(&mut self, mem: &mut VirtualMemory) {
-        let val = self.fetch_and_incr_pc(mem);
-        self.op_AND(val);
-    }
-
-    pub(super) fn instr_0xE7(&mut self, _mem: &mut VirtualMemory) {
-        todo!();
-    }
-
-    // ADD SP, e
-    pub(super) fn instr_0xE8(&mut self, mem: &mut VirtualMemory) {
-        let rhs = self.fetch_and_incr_pc(mem) as u16;
-        let (result, carries) = add_and_get_carries(self.sp, rhs);
-        self.sp = result;
-
-        self.registers.set_flags(&FlagRegister {
-            z: false,
-            n: false,
-            // https://stackoverflow.com/a/57978555
-            h: index_bitmap(carries, 3),
-            cy: index_bitmap(carries, 15),
-        });
-    }
-
-    // JP (HL)
-    pub(super) fn instr_0xE9(&mut self, _mem: &mut VirtualMemory) {
-        self.pc = self.registers.read_pair(RegisterPair::HL);
-    }
-
-    // LD (u16), A
-    pub(super) fn instr_0xEA(&mut self, mem: &mut VirtualMemory) {
-        self.op_LD_u16ptr_from_reg(Register::A, mem);
-    }
-
-    pub(super) fn instr_0xEB(&mut self, _mem: &mut VirtualMemory) {
-        todo!();
-    }
-
-    pub(super) fn instr_0xEC(&mut self, _mem: &mut VirtualMemory) {
-        todo!();
-    }
-
-    pub(super) fn instr_0xED(&mut self, _mem: &mut VirtualMemory) {
-        todo!();
-    }
-
-    // XOR u8
-    pub(super) fn instr_0xEE(&mut self, mem: &mut VirtualMemory) {
-        let val = self.fetch_and_incr_pc(mem);
-        self.op_XOR(val);
-    }
-
-    pub(super) fn instr_0xEF(&mut self, _mem: &mut VirtualMemory) {
-        todo!();
-    }
-
-    // LD A, (u8)
-    pub(super) fn instr_0xF0(&mut self, mem: &mut VirtualMemory) {
-        self.op_LD_reg_from_u8ptr(Register::A, mem);
-    }
-
-    // POP AF
-    pub(super) fn instr_0xF1(&mut self, mem: &mut VirtualMemory) {
-        self.op_POP_stack_to_regpair(RegisterPair::AF, mem);
-    }
-
-    // LD A, (C)
-    pub(super) fn instr_0xF2(&mut self, mem: &mut VirtualMemory) {
-        self.op_LD_reg_from_regptr(Register::A, Register::C, mem);
-    }
-
-    pub(super) fn instr_0xF3(&mut self, _mem: &mut VirtualMemory) {
-        todo!();
-    }
-
-    pub(super) fn instr_0xF4(&mut self, _mem: &mut VirtualMemory) {
-        todo!();
-    }
-
-    // PUSH AF
-    pub(super) fn instr_0xF5(&mut self, mem: &mut VirtualMemory) {
-        self.op_PUSH_stack_from_regpair(RegisterPair::AF, mem);
-    }
-
-    // OR u8
-    pub(super) fn instr_0xF6(&mut self, mem: &mut VirtualMemory) {
-        let val = self.fetch_and_incr_pc(mem);
-        self.op_OR(val);
-    }
-
-    pub(super) fn instr_0xF7(&mut self, _mem: &mut VirtualMemory) {
-        todo!();
-    }
-
-    // LDHL SP, i8
-    pub(super) fn instr_0xF8(&mut self, mem: &mut VirtualMemory) {
-        // Be careful of data types and sign extensions in this operation!
-        let operand = self.fetch_and_incr_pc(mem) as i8;
-        let (result, carries_or_borrows) = add_i8_to_u16(self.sp, operand);
-        self.registers.write_pair(RegisterPair::HL, result);
-        self.registers.set_flags(&FlagRegister {
-            z: false,
-            n: false,
-            h: index_bitmap(carries_or_borrows, 11),
-            cy: index_bitmap(carries_or_borrows, 15),
-        });
-    }
-
-    // LD SP, HL
-    pub(super) fn instr_0xF9(&mut self, _mem: &mut VirtualMemory) {
-        self.sp = self.registers.read_pair(RegisterPair::HL);
-    }
-
-    // LD A, (u16)
-    pub(super) fn instr_0xFA(&mut self, mem: &mut VirtualMemory) {
-        self.op_LD_reg_from_u16ptr(Register::A, mem);
-    }
-
-    pub(super) fn instr_0xFB(&mut self, _mem: &mut VirtualMemory) {
-        todo!();
-    }
-
-    pub(super) fn instr_0xFC(&mut self, _mem: &mut VirtualMemory) {
-        todo!();
-    }
-
-    pub(super) fn instr_0xFD(&mut self, _mem: &mut VirtualMemory) {
-        todo!();
-    }
-
-    // CP u8
-    pub(super) fn instr_0xFE(&mut self, mem: &mut VirtualMemory) {
-        let val = self.fetch_and_incr_pc(mem);
-        self.op_CP(val);
-    }
-
-    pub(super) fn instr_0xFF(&mut self, _mem: &mut VirtualMemory) {
-        todo!();
-    }
+/**
+ * Instructions
+ */
+
+// NOP
+pub(super) fn instr_0x00(_state: &mut GBCState) {}
+
+// LD BC, u16
+pub(super) fn instr_0x01(state: &mut GBCState) {
+    op_LD_registerpair_from_u16(&mut state.cpu, RegisterPair::BC, &state.mem);
+}
+
+// LD (BC), A
+pub(super) fn instr_0x02(state: &mut GBCState) {
+    op_LD_regpairptr_from_reg(&state.cpu, RegisterPair::BC, Register::A, &mut state.mem);
+}
+
+// INC BC
+pub(super) fn instr_0x03(state: &mut GBCState) {
+    op_INC_regpair(&mut state.cpu, RegisterPair::BC);
+}
+
+// INC B
+pub(super) fn instr_0x04(state: &mut GBCState) {
+    op_INC_reg(&mut state.cpu, Register::B);
+}
+
+// DEC B
+pub(super) fn instr_0x05(state: &mut GBCState) {
+    op_DEC_reg(&mut state.cpu, Register::B);
+}
+
+// LD B, u8
+pub(super) fn instr_0x06(state: &mut GBCState) {
+    op_LD_reg_from_u8(&mut state.cpu, Register::B, &state.mem);
+}
+
+// RLCA
+pub(super) fn instr_0x07(state: &mut GBCState) {
+    let val = state.cpu.registers.read(Register::A);
+    state.cpu.registers.set_flags(&FlagRegister {
+        z: false,
+        n: false,
+        h: false,
+        cy: index_bitmap(val, 7),
+    });
+    state.cpu.registers.write(Register::A, val.rotate_left(1));
+}
+
+// LD (u16), SP
+pub(super) fn instr_0x08(state: &mut GBCState) {
+    let addr = super::fetch_and_incr_pc_16(&mut state.cpu, &state.mem);
+    state.mem.write(addr, state.cpu.sp.low());
+    state.mem.write(addr + 1, state.cpu.sp.high());
+}
+
+//  ADD HL, BC
+pub(super) fn instr_0x09(state: &mut GBCState) {
+    op_ADD_regpair(&mut state.cpu, RegisterPair::BC);
+}
+
+// LD A, (BC)
+pub(super) fn instr_0x0A(state: &mut GBCState) {
+    op_LD_reg_from_regpairptr(&mut state.cpu, Register::A, RegisterPair::BC, &state.mem);
+}
+
+// DEC BC
+pub(super) fn instr_0x0B(state: &mut GBCState) {
+    op_DEC_regpair(&mut state.cpu, RegisterPair::BC);
+}
+
+// INC C
+pub(super) fn instr_0x0C(state: &mut GBCState) {
+    op_INC_reg(&mut state.cpu, Register::C);
+}
+
+// DEC C
+pub(super) fn instr_0x0D(state: &mut GBCState) {
+    op_DEC_reg(&mut state.cpu, Register::C);
+}
+
+// LD C, u8
+pub(super) fn instr_0x0E(state: &mut GBCState) {
+    op_LD_reg_from_u8(&mut state.cpu, Register::C, &state.mem);
+}
+
+// RRCA
+pub(super) fn instr_0x0F(state: &mut GBCState) {
+    let val = state.cpu.registers.read(Register::A);
+    state.cpu.registers.set_flags(&FlagRegister {
+        z: false,
+        n: false,
+        h: false,
+        cy: index_bitmap(val, 0),
+    });
+    state.cpu.registers.write(Register::A, val.rotate_right(1));
+}
+
+pub(super) fn instr_0x10(_state: &mut GBCState) {
+    todo!();
+}
+
+// LD DE, u16
+pub(super) fn instr_0x11(state: &mut GBCState) {
+    op_LD_registerpair_from_u16(&mut state.cpu, RegisterPair::DE, &state.mem);
+}
+
+// LD (DE), A
+pub(super) fn instr_0x12(state: &mut GBCState) {
+    op_LD_reg_from_regpairptr(&mut state.cpu, Register::A, RegisterPair::DE, &state.mem);
+}
+
+// INC DE
+pub(super) fn instr_0x13(state: &mut GBCState) {
+    op_INC_regpair(&mut state.cpu, RegisterPair::DE);
+}
+
+// INC D
+pub(super) fn instr_0x14(state: &mut GBCState) {
+    op_INC_reg(&mut state.cpu, Register::D);
+}
+
+// DEC D
+pub(super) fn instr_0x15(state: &mut GBCState) {
+    op_DEC_reg(&mut state.cpu, Register::D);
+}
+
+// LD D, u8
+pub(super) fn instr_0x16(state: &mut GBCState) {
+    op_LD_reg_from_u8(&mut state.cpu, Register::D, &state.mem);
+}
+
+// RLA
+pub(super) fn instr_0x17(state: &mut GBCState) {
+    let val = state.cpu.registers.read(Register::A);
+    let old_cy = state.cpu.registers.get_flags().cy;
+    state.cpu.registers.set_flags(&FlagRegister {
+        z: false,
+        n: false,
+        h: false,
+        cy: index_bitmap(val, 7),
+    });
+    let result = (val << 1) | (old_cy as u8);
+    state.cpu.registers.write(Register::A, result);
+}
+
+// JR i8
+pub(super) fn instr_0x18(state: &mut GBCState) {
+    let operand = super::fetch_and_incr_pc(&mut state.cpu, &state.mem) as i8;
+    state.cpu.pc = add_i8_to_u16(state.cpu.pc, operand).0;
+}
+
+// ADD HL, DE
+pub(super) fn instr_0x19(state: &mut GBCState) {
+    op_ADD_regpair(&mut state.cpu, RegisterPair::DE);
+}
+
+// LD A, (DE)
+pub(super) fn instr_0x1A(state: &mut GBCState) {
+    op_LD_reg_from_regpairptr(&mut state.cpu, Register::A, RegisterPair::DE, &state.mem);
+}
+
+// DEC DE
+pub(super) fn instr_0x1B(state: &mut GBCState) {
+    op_DEC_regpair(&mut state.cpu, RegisterPair::DE);
+}
+
+// INC E
+pub(super) fn instr_0x1C(state: &mut GBCState) {
+    op_INC_reg(&mut state.cpu, Register::E);
+}
+
+// DEC E
+pub(super) fn instr_0x1D(state: &mut GBCState) {
+    op_DEC_reg(&mut state.cpu, Register::E);
+}
+
+// LD E, u8
+pub(super) fn instr_0x1E(state: &mut GBCState) {
+    op_LD_reg_from_u8(&mut state.cpu, Register::E, &state.mem);
+}
+
+// RRA
+pub(super) fn instr_0x1F(state: &mut GBCState) {
+    let val = state.cpu.registers.read(Register::A);
+    let old_cy = state.cpu.registers.get_flags().cy;
+    state.cpu.registers.set_flags(&FlagRegister {
+        z: false,
+        n: false,
+        h: false,
+        cy: index_bitmap(val, 0),
+    });
+    let result = ((old_cy as u8) << 7) | (val >> 1);
+    state.cpu.registers.write(Register::A, result);
+}
+
+// JR NZ, i8
+pub(super) fn instr_0x20(state: &mut GBCState) {
+    let operand = super::fetch_and_incr_pc(&mut state.cpu, &state.mem) as i8;
+    if !state.cpu.registers.get_flags().z {
+        state.cpu.pc = add_i8_to_u16(state.cpu.pc, operand).0;
+    }
+}
+
+// LD HL, u16
+pub(super) fn instr_0x21(state: &mut GBCState) {
+    op_LD_registerpair_from_u16(&mut state.cpu, RegisterPair::HL, &state.mem);
+}
+
+// LD (HLI), A
+pub(super) fn instr_0x22(state: &mut GBCState) {
+    op_LD_regpairptr_from_reg(&state.cpu, RegisterPair::HL, Register::A, &mut state.mem);
+    let new_hl = state
+        .cpu
+        .registers
+        .read_pair(RegisterPair::HL)
+        .wrapping_add(1);
+    state.cpu.registers.write_pair(RegisterPair::HL, new_hl);
+}
+
+// INC HL
+pub(super) fn instr_0x23(state: &mut GBCState) {
+    op_INC_regpair(&mut state.cpu, RegisterPair::HL);
+}
+
+// INC H
+pub(super) fn instr_0x24(state: &mut GBCState) {
+    op_INC_reg(&mut state.cpu, Register::H);
+}
+
+// DEC H
+pub(super) fn instr_0x25(state: &mut GBCState) {
+    op_DEC_reg(&mut state.cpu, Register::H);
+}
+
+// LD H, u8
+pub(super) fn instr_0x26(state: &mut GBCState) {
+    op_LD_reg_from_u8(&mut state.cpu, Register::H, &state.mem);
+}
+
+pub(super) fn instr_0x27(_state: &mut GBCState) {
+    todo!();
+}
+
+// JR Z, i8
+pub(super) fn instr_0x28(state: &mut GBCState) {
+    let operand = super::fetch_and_incr_pc(&mut state.cpu, &state.mem) as i8;
+    if state.cpu.registers.get_flags().z {
+        state.cpu.pc = add_i8_to_u16(state.cpu.pc, operand).0;
+    }
+}
+
+// ADD HL, HL
+pub(super) fn instr_0x29(state: &mut GBCState) {
+    op_ADD_regpair(&mut state.cpu, RegisterPair::HL);
+}
+
+// LD A, (HLI)
+pub(super) fn instr_0x2A(state: &mut GBCState) {
+    op_LD_reg_from_regpairptr(&mut state.cpu, Register::A, RegisterPair::HL, &state.mem);
+    let new_hl = state
+        .cpu
+        .registers
+        .read_pair(RegisterPair::HL)
+        .wrapping_add(1);
+    state.cpu.registers.write_pair(RegisterPair::HL, new_hl);
+}
+
+// DEC HL
+pub(super) fn instr_0x2B(state: &mut GBCState) {
+    op_DEC_regpair(&mut state.cpu, RegisterPair::HL);
+}
+
+// INC L
+pub(super) fn instr_0x2C(state: &mut GBCState) {
+    op_INC_reg(&mut state.cpu, Register::L);
+}
+
+// DEC L
+pub(super) fn instr_0x2D(state: &mut GBCState) {
+    op_DEC_reg(&mut state.cpu, Register::L);
+}
+
+// LD L, u8
+pub(super) fn instr_0x2E(state: &mut GBCState) {
+    op_LD_reg_from_u8(&mut state.cpu, Register::L, &state.mem);
+}
+
+pub(super) fn instr_0x2F(_state: &mut GBCState) {
+    todo!();
+}
+
+// JR NC, i8
+pub(super) fn instr_0x30(state: &mut GBCState) {
+    let operand = super::fetch_and_incr_pc(&mut state.cpu, &state.mem) as i8;
+    if !state.cpu.registers.get_flags().cy {
+        state.cpu.pc = add_i8_to_u16(state.cpu.pc, operand).0;
+    }
+}
+
+// LD SP, u16
+pub(super) fn instr_0x31(state: &mut GBCState) {
+    state.cpu.sp = super::fetch_and_incr_pc_16(&mut state.cpu, &state.mem);
+}
+
+// LD (HLD), A
+pub(super) fn instr_0x32(state: &mut GBCState) {
+    op_LD_regpairptr_from_reg(
+        &mut state.cpu,
+        RegisterPair::HL,
+        Register::A,
+        &mut state.mem,
+    );
+    let new_hl = state
+        .cpu
+        .registers
+        .read_pair(RegisterPair::HL)
+        .wrapping_sub(1);
+    state.cpu.registers.write_pair(RegisterPair::HL, new_hl);
+}
+
+// INC SP
+pub(super) fn instr_0x33(state: &mut GBCState) {
+    state.cpu.sp = state.cpu.sp.wrapping_add(1);
+}
+
+// INC (HL)
+pub(super) fn instr_0x34(state: &mut GBCState) {
+    let addr = state.cpu.registers.read_pair(RegisterPair::HL);
+    let lhs = state.mem.read(addr);
+    let (result, carries) = add_and_get_carries(lhs, 1);
+    state.mem.write(addr, result);
+
+    state.cpu.registers.set_flags(&FlagRegister {
+        z: result == 0,
+        n: false,
+        h: index_bitmap(carries, 3),
+        cy: state.cpu.registers.get_flags().cy,
+    });
+}
+
+// DEC (HL)
+pub(super) fn instr_0x35(state: &mut GBCState) {
+    let addr = state.cpu.registers.read_pair(RegisterPair::HL);
+    let lhs = state.mem.read(addr);
+    let (result, borrows) = subtract_and_get_borrows(lhs, 1);
+    state.mem.write(addr, result);
+
+    state.cpu.registers.set_flags(&FlagRegister {
+        z: result == 0,
+        n: true,
+        h: index_bitmap(borrows, 3),
+        cy: state.cpu.registers.get_flags().cy,
+    });
+}
+
+// LD (HL), u8
+pub(super) fn instr_0x36(state: &mut GBCState) {
+    op_LD_regpairptr_from_u8(&mut state.cpu, RegisterPair::HL, &mut state.mem);
+}
+
+pub(super) fn instr_0x37(_state: &mut GBCState) {
+    todo!();
+}
+
+// JR C, i8
+pub(super) fn instr_0x38(state: &mut GBCState) {
+    let operand = super::fetch_and_incr_pc(&mut state.cpu, &state.mem) as i8;
+    if state.cpu.registers.get_flags().cy {
+        state.cpu.pc = add_i8_to_u16(state.cpu.pc, operand).0;
+    }
+}
+
+// ADD HL, SP
+pub(super) fn instr_0x39(state: &mut GBCState) {
+    let val = state.cpu.sp;
+    op_ADD_u16(&mut state.cpu, val);
+}
+
+// LD A, (HLD)
+pub(super) fn instr_0x3A(state: &mut GBCState) {
+    op_LD_reg_from_regpairptr(&mut state.cpu, Register::A, RegisterPair::HL, &state.mem);
+    let new_hl = state
+        .cpu
+        .registers
+        .read_pair(RegisterPair::HL)
+        .wrapping_sub(1);
+    state.cpu.registers.write_pair(RegisterPair::HL, new_hl);
+}
+
+// DEC SP
+pub(super) fn instr_0x3B(state: &mut GBCState) {
+    state.cpu.sp = state.cpu.sp.wrapping_sub(1);
+}
+
+// INC A
+pub(super) fn instr_0x3C(state: &mut GBCState) {
+    op_INC_reg(&mut state.cpu, Register::A);
+}
+
+pub(super) fn instr_0x3D(_state: &mut GBCState) {
+    todo!();
+}
+
+// LD A, u8
+pub(super) fn instr_0x3E(state: &mut GBCState) {
+    op_LD_reg_from_u8(&mut state.cpu, Register::A, &state.mem);
+}
+
+pub(super) fn instr_0x3F(_state: &mut GBCState) {
+    todo!();
+}
+
+// LD B, B
+pub(super) fn instr_0x40(state: &mut GBCState) {
+    op_LD_reg_from_reg(&mut state.cpu, Register::B, Register::B);
+}
+
+// LD B, C
+pub(super) fn instr_0x41(state: &mut GBCState) {
+    op_LD_reg_from_reg(&mut state.cpu, Register::B, Register::C);
+}
+
+// LD B, D
+pub(super) fn instr_0x42(state: &mut GBCState) {
+    op_LD_reg_from_reg(&mut state.cpu, Register::B, Register::D);
+}
+
+// LD B, E
+pub(super) fn instr_0x43(state: &mut GBCState) {
+    op_LD_reg_from_reg(&mut state.cpu, Register::B, Register::E);
+}
+
+// LD B, H
+pub(super) fn instr_0x44(state: &mut GBCState) {
+    op_LD_reg_from_reg(&mut state.cpu, Register::B, Register::H);
+}
+
+// LD B, L
+pub(super) fn instr_0x45(state: &mut GBCState) {
+    op_LD_reg_from_reg(&mut state.cpu, Register::B, Register::L);
+}
+
+// LD B, (HL)
+pub(super) fn instr_0x46(state: &mut GBCState) {
+    op_LD_reg_from_regpairptr(&mut state.cpu, Register::B, RegisterPair::HL, &state.mem);
+}
+
+// LD B, A
+pub(super) fn instr_0x47(state: &mut GBCState) {
+    op_LD_reg_from_reg(&mut state.cpu, Register::B, Register::A);
+}
+
+// LD C, B
+pub(super) fn instr_0x48(state: &mut GBCState) {
+    op_LD_reg_from_reg(&mut state.cpu, Register::C, Register::B);
+}
+
+// LD C, C
+pub(super) fn instr_0x49(state: &mut GBCState) {
+    op_LD_reg_from_reg(&mut state.cpu, Register::C, Register::C);
+}
+
+// LD C, D
+pub(super) fn instr_0x4A(state: &mut GBCState) {
+    op_LD_reg_from_reg(&mut state.cpu, Register::C, Register::D);
+}
+
+// LD C, E
+pub(super) fn instr_0x4B(state: &mut GBCState) {
+    op_LD_reg_from_reg(&mut state.cpu, Register::C, Register::E);
+}
+
+// LD C, H
+pub(super) fn instr_0x4C(state: &mut GBCState) {
+    op_LD_reg_from_reg(&mut state.cpu, Register::C, Register::H);
+}
+
+// LD C, L
+pub(super) fn instr_0x4D(state: &mut GBCState) {
+    op_LD_reg_from_reg(&mut state.cpu, Register::C, Register::L);
+}
+
+// LD C, (HL)
+pub(super) fn instr_0x4E(state: &mut GBCState) {
+    op_LD_reg_from_regpairptr(&mut state.cpu, Register::C, RegisterPair::HL, &state.mem);
+}
+
+// LD C, A
+pub(super) fn instr_0x4F(state: &mut GBCState) {
+    op_LD_reg_from_reg(&mut state.cpu, Register::C, Register::A);
+}
+
+// LD D, B
+pub(super) fn instr_0x50(state: &mut GBCState) {
+    op_LD_reg_from_reg(&mut state.cpu, Register::D, Register::B);
+}
+
+// LD D, C
+pub(super) fn instr_0x51(state: &mut GBCState) {
+    op_LD_reg_from_reg(&mut state.cpu, Register::D, Register::C);
+}
+
+// LD D, D
+pub(super) fn instr_0x52(state: &mut GBCState) {
+    op_LD_reg_from_reg(&mut state.cpu, Register::D, Register::D);
+}
+
+// LD D, E
+pub(super) fn instr_0x53(state: &mut GBCState) {
+    op_LD_reg_from_reg(&mut state.cpu, Register::D, Register::E);
+}
+
+// LD D, H
+pub(super) fn instr_0x54(state: &mut GBCState) {
+    op_LD_reg_from_reg(&mut state.cpu, Register::D, Register::H);
+}
+
+// LD D, L
+pub(super) fn instr_0x55(state: &mut GBCState) {
+    op_LD_reg_from_reg(&mut state.cpu, Register::D, Register::L);
+}
+
+// LD D, (HL)
+pub(super) fn instr_0x56(state: &mut GBCState) {
+    op_LD_reg_from_regpairptr(&mut state.cpu, Register::D, RegisterPair::HL, &state.mem);
+}
+
+// LD D, A
+pub(super) fn instr_0x57(state: &mut GBCState) {
+    op_LD_reg_from_reg(&mut state.cpu, Register::D, Register::A);
+}
+
+// LD E, B
+pub(super) fn instr_0x58(state: &mut GBCState) {
+    op_LD_reg_from_reg(&mut state.cpu, Register::E, Register::B);
+}
+
+// LD E, C
+pub(super) fn instr_0x59(state: &mut GBCState) {
+    op_LD_reg_from_reg(&mut state.cpu, Register::E, Register::C);
+}
+
+// LD E, D
+pub(super) fn instr_0x5A(state: &mut GBCState) {
+    op_LD_reg_from_reg(&mut state.cpu, Register::E, Register::D);
+}
+
+// LD E, E
+pub(super) fn instr_0x5B(state: &mut GBCState) {
+    op_LD_reg_from_reg(&mut state.cpu, Register::E, Register::E);
+}
+
+// LD E, H
+pub(super) fn instr_0x5C(state: &mut GBCState) {
+    op_LD_reg_from_reg(&mut state.cpu, Register::E, Register::H);
+}
+
+// LD E, L
+pub(super) fn instr_0x5D(state: &mut GBCState) {
+    op_LD_reg_from_reg(&mut state.cpu, Register::E, Register::L);
+}
+
+// LD E, (HL)
+pub(super) fn instr_0x5E(state: &mut GBCState) {
+    op_LD_reg_from_regpairptr(&mut state.cpu, Register::E, RegisterPair::HL, &state.mem);
+}
+
+// LD E, A
+pub(super) fn instr_0x5F(state: &mut GBCState) {
+    op_LD_reg_from_reg(&mut state.cpu, Register::E, Register::A);
+}
+
+// LD H, B
+pub(super) fn instr_0x60(state: &mut GBCState) {
+    op_LD_reg_from_reg(&mut state.cpu, Register::H, Register::B);
+}
+
+// LD H, C
+pub(super) fn instr_0x61(state: &mut GBCState) {
+    op_LD_reg_from_reg(&mut state.cpu, Register::H, Register::C);
+}
+
+// LD H, D
+pub(super) fn instr_0x62(state: &mut GBCState) {
+    op_LD_reg_from_reg(&mut state.cpu, Register::H, Register::D);
+}
+
+// LD H, E
+pub(super) fn instr_0x63(state: &mut GBCState) {
+    op_LD_reg_from_reg(&mut state.cpu, Register::H, Register::E);
+}
+
+// LD H, H
+pub(super) fn instr_0x64(state: &mut GBCState) {
+    op_LD_reg_from_reg(&mut state.cpu, Register::H, Register::H);
+}
+
+// LD H, L
+pub(super) fn instr_0x65(state: &mut GBCState) {
+    op_LD_reg_from_reg(&mut state.cpu, Register::H, Register::L);
+}
+
+// LD H, (HL)
+pub(super) fn instr_0x66(state: &mut GBCState) {
+    op_LD_reg_from_regpairptr(&mut state.cpu, Register::H, RegisterPair::HL, &state.mem);
+}
+
+// LD H, A
+pub(super) fn instr_0x67(state: &mut GBCState) {
+    op_LD_reg_from_reg(&mut state.cpu, Register::H, Register::A);
+}
+
+// LD L, B
+pub(super) fn instr_0x68(state: &mut GBCState) {
+    op_LD_reg_from_reg(&mut state.cpu, Register::L, Register::B);
+}
+
+// LD L, C
+pub(super) fn instr_0x69(state: &mut GBCState) {
+    op_LD_reg_from_reg(&mut state.cpu, Register::L, Register::C);
+}
+
+// LD L, D
+pub(super) fn instr_0x6A(state: &mut GBCState) {
+    op_LD_reg_from_reg(&mut state.cpu, Register::L, Register::D);
+}
+
+// LD L, E
+pub(super) fn instr_0x6B(state: &mut GBCState) {
+    op_LD_reg_from_reg(&mut state.cpu, Register::L, Register::E);
+}
+
+// LD L, H
+pub(super) fn instr_0x6C(state: &mut GBCState) {
+    op_LD_reg_from_reg(&mut state.cpu, Register::L, Register::H);
+}
+
+// LD L, L
+pub(super) fn instr_0x6D(state: &mut GBCState) {
+    op_LD_reg_from_reg(&mut state.cpu, Register::L, Register::L);
+}
+
+// LD L, (HL)
+pub(super) fn instr_0x6E(state: &mut GBCState) {
+    op_LD_reg_from_regpairptr(&mut state.cpu, Register::L, RegisterPair::HL, &state.mem);
+}
+
+// LD L, A
+pub(super) fn instr_0x6F(state: &mut GBCState) {
+    op_LD_reg_from_reg(&mut state.cpu, Register::L, Register::A);
+}
+
+// LD (HL). B
+pub(super) fn instr_0x70(state: &mut GBCState) {
+    op_LD_regpairptr_from_reg(&state.cpu, RegisterPair::HL, Register::B, &mut state.mem);
+}
+
+// LD (HL). C
+pub(super) fn instr_0x71(state: &mut GBCState) {
+    op_LD_regpairptr_from_reg(&state.cpu, RegisterPair::HL, Register::C, &mut state.mem);
+}
+
+// LD (HL). D
+pub(super) fn instr_0x72(state: &mut GBCState) {
+    op_LD_regpairptr_from_reg(&state.cpu, RegisterPair::HL, Register::D, &mut state.mem);
+}
+
+// LD (HL). E
+pub(super) fn instr_0x73(state: &mut GBCState) {
+    op_LD_regpairptr_from_reg(&state.cpu, RegisterPair::HL, Register::E, &mut state.mem);
+}
+
+// LD (HL). H
+pub(super) fn instr_0x74(state: &mut GBCState) {
+    op_LD_regpairptr_from_reg(&state.cpu, RegisterPair::HL, Register::H, &mut state.mem);
+}
+
+// LD (HL). L
+pub(super) fn instr_0x75(state: &mut GBCState) {
+    op_LD_regpairptr_from_reg(&state.cpu, RegisterPair::HL, Register::L, &mut state.mem);
+}
+
+pub(super) fn instr_0x76(_state: &mut GBCState) {
+    todo!();
+}
+
+// LD (HL), A
+pub(super) fn instr_0x77(state: &mut GBCState) {
+    op_LD_regpairptr_from_reg(&state.cpu, RegisterPair::HL, Register::A, &mut state.mem);
+}
+
+// LD A, B
+pub(super) fn instr_0x78(state: &mut GBCState) {
+    op_LD_reg_from_reg(&mut state.cpu, Register::A, Register::B);
+}
+
+// LD A, C
+pub(super) fn instr_0x79(state: &mut GBCState) {
+    op_LD_reg_from_reg(&mut state.cpu, Register::A, Register::C);
+}
+
+// LD A, D
+pub(super) fn instr_0x7A(state: &mut GBCState) {
+    op_LD_reg_from_reg(&mut state.cpu, Register::A, Register::D);
+}
+
+// LD A, E
+pub(super) fn instr_0x7B(state: &mut GBCState) {
+    op_LD_reg_from_reg(&mut state.cpu, Register::A, Register::E);
+}
+
+// LD A, H
+pub(super) fn instr_0x7C(state: &mut GBCState) {
+    op_LD_reg_from_reg(&mut state.cpu, Register::A, Register::H);
+}
+
+// LD A, L
+pub(super) fn instr_0x7D(state: &mut GBCState) {
+    op_LD_reg_from_reg(&mut state.cpu, Register::A, Register::L);
+}
+
+// LD A, (HL)
+pub(super) fn instr_0x7E(state: &mut GBCState) {
+    op_LD_reg_from_regpairptr(&mut state.cpu, Register::A, RegisterPair::HL, &state.mem);
+}
+
+// LD A, A
+pub(super) fn instr_0x7F(state: &mut GBCState) {
+    op_LD_reg_from_reg(&mut state.cpu, Register::A, Register::A);
+}
+
+// ADD A, B
+pub(super) fn instr_0x80(state: &mut GBCState) {
+    op_ADD_reg(&mut state.cpu, Register::B);
+}
+
+// Add A, C
+pub(super) fn instr_0x81(state: &mut GBCState) {
+    op_ADD_reg(&mut state.cpu, Register::C);
+}
+
+// Add A, D
+pub(super) fn instr_0x82(state: &mut GBCState) {
+    op_ADD_reg(&mut state.cpu, Register::D);
+}
+
+// Add A, E
+pub(super) fn instr_0x83(state: &mut GBCState) {
+    op_ADD_reg(&mut state.cpu, Register::E);
+}
+
+// Add A, H
+pub(super) fn instr_0x84(state: &mut GBCState) {
+    op_ADD_reg(&mut state.cpu, Register::H);
+}
+
+// Add A, L
+pub(super) fn instr_0x85(state: &mut GBCState) {
+    op_ADD_reg(&mut state.cpu, Register::L);
+}
+
+// ADD A, (HL)
+pub(super) fn instr_0x86(state: &mut GBCState) {
+    let addr = state.cpu.registers.read_pair(RegisterPair::HL);
+    let val = state.mem.read(addr);
+    op_ADD(&mut state.cpu, val);
+}
+
+// Add A, A
+pub(super) fn instr_0x87(state: &mut GBCState) {
+    op_ADD_reg(&mut state.cpu, Register::A);
+}
+
+// ADC A, B
+pub(super) fn instr_0x88(state: &mut GBCState) {
+    op_ADC_reg(&mut state.cpu, Register::B);
+}
+
+// ADC A, C
+pub(super) fn instr_0x89(state: &mut GBCState) {
+    op_ADC_reg(&mut state.cpu, Register::C);
+}
+
+// ADC A, D
+pub(super) fn instr_0x8A(state: &mut GBCState) {
+    op_ADC_reg(&mut state.cpu, Register::D);
+}
+
+// ADC A, E
+pub(super) fn instr_0x8B(state: &mut GBCState) {
+    op_ADC_reg(&mut state.cpu, Register::E);
+}
+
+// ADC A, H
+pub(super) fn instr_0x8C(state: &mut GBCState) {
+    op_ADC_reg(&mut state.cpu, Register::H);
+}
+
+// ADC A, L
+pub(super) fn instr_0x8D(state: &mut GBCState) {
+    op_ADC_reg(&mut state.cpu, Register::L);
+}
+
+// ADC A, (HL)
+pub(super) fn instr_0x8E(state: &mut GBCState) {
+    let addr = state.cpu.registers.read_pair(RegisterPair::HL);
+    let val = state.mem.read(addr);
+    op_ADC(&mut state.cpu, val);
+}
+
+// ADC A, A
+pub(super) fn instr_0x8F(state: &mut GBCState) {
+    op_ADC_reg(&mut state.cpu, Register::A);
+}
+
+// SUB B
+pub(super) fn instr_0x90(state: &mut GBCState) {
+    op_SUB_reg(&mut state.cpu, Register::B);
+}
+
+// SUB C
+pub(super) fn instr_0x91(state: &mut GBCState) {
+    op_SUB_reg(&mut state.cpu, Register::C);
+}
+
+// SUB D
+pub(super) fn instr_0x92(state: &mut GBCState) {
+    op_SUB_reg(&mut state.cpu, Register::D);
+}
+
+// SUB E
+pub(super) fn instr_0x93(state: &mut GBCState) {
+    op_SUB_reg(&mut state.cpu, Register::E);
+}
+
+// SUB H
+pub(super) fn instr_0x94(state: &mut GBCState) {
+    op_SUB_reg(&mut state.cpu, Register::H);
+}
+
+// SUB L
+pub(super) fn instr_0x95(state: &mut GBCState) {
+    op_SUB_reg(&mut state.cpu, Register::L);
+}
+
+// SUB (HL)
+pub(super) fn instr_0x96(state: &mut GBCState) {
+    let addr = state.cpu.registers.read_pair(RegisterPair::HL);
+    let val = state.mem.read(addr);
+    op_SUB(&mut state.cpu, val);
+}
+
+// SUB A
+pub(super) fn instr_0x97(state: &mut GBCState) {
+    op_SUB_reg(&mut state.cpu, Register::A);
+}
+
+// SBC A, B
+pub(super) fn instr_0x98(state: &mut GBCState) {
+    op_SBC_reg(&mut state.cpu, Register::B);
+}
+
+// SBC A, C
+pub(super) fn instr_0x99(state: &mut GBCState) {
+    op_SBC_reg(&mut state.cpu, Register::C);
+}
+
+// SBC A, D
+pub(super) fn instr_0x9A(state: &mut GBCState) {
+    op_SBC_reg(&mut state.cpu, Register::D);
+}
+
+// SBC A, E
+pub(super) fn instr_0x9B(state: &mut GBCState) {
+    op_SBC_reg(&mut state.cpu, Register::E);
+}
+
+// SBC A, H
+pub(super) fn instr_0x9C(state: &mut GBCState) {
+    op_SBC_reg(&mut state.cpu, Register::H);
+}
+
+// SBC A, L
+pub(super) fn instr_0x9D(state: &mut GBCState) {
+    op_SBC_reg(&mut state.cpu, Register::L);
+}
+
+// SBC A, (HL)
+pub(super) fn instr_0x9E(state: &mut GBCState) {
+    let addr = state.cpu.registers.read_pair(RegisterPair::HL);
+    let val = state.mem.read(addr);
+    op_SBC(&mut state.cpu, val);
+}
+
+// SBC A, A
+pub(super) fn instr_0x9F(state: &mut GBCState) {
+    op_SBC_reg(&mut state.cpu, Register::A);
+}
+
+// AND B
+pub(super) fn instr_0xA0(state: &mut GBCState) {
+    op_AND_reg(&mut state.cpu, Register::B);
+}
+
+// AND C
+pub(super) fn instr_0xA1(state: &mut GBCState) {
+    op_AND_reg(&mut state.cpu, Register::C);
+}
+
+// AND D
+pub(super) fn instr_0xA2(state: &mut GBCState) {
+    op_AND_reg(&mut state.cpu, Register::D);
+}
+
+// AND E
+pub(super) fn instr_0xA3(state: &mut GBCState) {
+    op_AND_reg(&mut state.cpu, Register::E);
+}
+
+// AND H
+pub(super) fn instr_0xA4(state: &mut GBCState) {
+    op_AND_reg(&mut state.cpu, Register::H);
+}
+
+// AND L
+pub(super) fn instr_0xA5(state: &mut GBCState) {
+    op_AND_reg(&mut state.cpu, Register::L);
+}
+
+// AND (HL)
+pub(super) fn instr_0xA6(state: &mut GBCState) {
+    let addr = state.cpu.registers.read_pair(RegisterPair::HL);
+    let val = state.mem.read(addr);
+    op_AND(&mut state.cpu, val);
+}
+
+// AND A
+pub(super) fn instr_0xA7(state: &mut GBCState) {
+    op_AND_reg(&mut state.cpu, Register::A);
+}
+
+// XOR B
+pub(super) fn instr_0xA8(state: &mut GBCState) {
+    op_XOR_reg(&mut state.cpu, Register::B);
+}
+
+// XOR C
+pub(super) fn instr_0xA9(state: &mut GBCState) {
+    op_XOR_reg(&mut state.cpu, Register::C);
+}
+
+// XOR D
+pub(super) fn instr_0xAA(state: &mut GBCState) {
+    op_XOR_reg(&mut state.cpu, Register::D);
+}
+
+// XOR E
+pub(super) fn instr_0xAB(state: &mut GBCState) {
+    op_XOR_reg(&mut state.cpu, Register::E);
+}
+
+// XOR H
+pub(super) fn instr_0xAC(state: &mut GBCState) {
+    op_XOR_reg(&mut state.cpu, Register::H);
+}
+
+// XOR L
+pub(super) fn instr_0xAD(state: &mut GBCState) {
+    op_XOR_reg(&mut state.cpu, Register::L);
+}
+
+// XOR (HL)
+pub(super) fn instr_0xAE(state: &mut GBCState) {
+    let addr = state.cpu.registers.read_pair(RegisterPair::HL);
+    let val = state.mem.read(addr);
+    op_XOR(&mut state.cpu, val);
+}
+
+// XOR A
+pub(super) fn instr_0xAF(state: &mut GBCState) {
+    op_XOR_reg(&mut state.cpu, Register::A);
+}
+
+// OR B
+pub(super) fn instr_0xB0(state: &mut GBCState) {
+    op_OR_reg(&mut state.cpu, Register::B);
+}
+
+// OR C
+pub(super) fn instr_0xB1(state: &mut GBCState) {
+    op_OR_reg(&mut state.cpu, Register::C);
+}
+
+// OR D
+pub(super) fn instr_0xB2(state: &mut GBCState) {
+    op_OR_reg(&mut state.cpu, Register::D);
+}
+
+// OR E
+pub(super) fn instr_0xB3(state: &mut GBCState) {
+    op_OR_reg(&mut state.cpu, Register::E);
+}
+
+// OR H
+pub(super) fn instr_0xB4(state: &mut GBCState) {
+    op_OR_reg(&mut state.cpu, Register::H);
+}
+
+// OR L
+pub(super) fn instr_0xB5(state: &mut GBCState) {
+    op_OR_reg(&mut state.cpu, Register::L);
+}
+
+// OR (HL)
+pub(super) fn instr_0xB6(state: &mut GBCState) {
+    let addr = state.cpu.registers.read_pair(RegisterPair::HL);
+    let val = state.mem.read(addr);
+    op_OR(&mut state.cpu, val);
+}
+
+// OR A
+pub(super) fn instr_0xB7(state: &mut GBCState) {
+    op_OR_reg(&mut state.cpu, Register::A);
+}
+
+// CP B
+pub(super) fn instr_0xB8(state: &mut GBCState) {
+    op_CP_reg(&mut state.cpu, Register::B);
+}
+
+// CP C
+pub(super) fn instr_0xB9(state: &mut GBCState) {
+    op_CP_reg(&mut state.cpu, Register::C);
+}
+
+// CP D
+pub(super) fn instr_0xBA(state: &mut GBCState) {
+    op_CP_reg(&mut state.cpu, Register::D);
+}
+
+// CP E
+pub(super) fn instr_0xBB(state: &mut GBCState) {
+    op_CP_reg(&mut state.cpu, Register::E);
+}
+
+// CP H
+pub(super) fn instr_0xBC(state: &mut GBCState) {
+    op_CP_reg(&mut state.cpu, Register::H);
+}
+
+// CP L
+pub(super) fn instr_0xBD(state: &mut GBCState) {
+    op_CP_reg(&mut state.cpu, Register::L);
+}
+
+// CP (HL)
+pub(super) fn instr_0xBE(state: &mut GBCState) {
+    let addr = state.cpu.registers.read_pair(RegisterPair::HL);
+    let val = state.mem.read(addr);
+    op_CP(&mut state.cpu, val);
+}
+
+// CP A
+pub(super) fn instr_0xBF(state: &mut GBCState) {
+    op_CP_reg(&mut state.cpu, Register::A);
+}
+
+pub(super) fn instr_0xC0(_state: &mut GBCState) {
+    todo!();
+}
+
+// POP BC
+pub(super) fn instr_0xC1(state: &mut GBCState) {
+    op_POP_stack_to_regpair(&mut state.cpu, RegisterPair::BC, &state.mem);
+}
+
+// JP NZ, u16
+pub(super) fn instr_0xC2(state: &mut GBCState) {
+    let new_pc = super::fetch_and_incr_pc_16(&mut state.cpu, &state.mem);
+    if !state.cpu.registers.get_flags().z {
+        state.cpu.pc = new_pc;
+    }
+}
+
+// JP u16
+pub(super) fn instr_0xC3(state: &mut GBCState) {
+    state.cpu.pc = super::fetch_and_incr_pc_16(&mut state.cpu, &state.mem);
+}
+
+// CALL NZ, u16
+pub(super) fn instr_0xC4(state: &mut GBCState) {
+    let new_pc = super::fetch_and_incr_pc_16(&mut state.cpu, &state.mem);
+    if !state.cpu.registers.get_flags().z {
+        state.cpu.sp -= 1;
+        state.mem.write(state.cpu.sp, state.cpu.pc.high());
+        state.cpu.sp -= 1;
+        state.mem.write(state.cpu.sp, state.cpu.pc.low());
+        state.cpu.pc = new_pc;
+    }
+}
+
+// PUSH BC
+pub(super) fn instr_0xC5(state: &mut GBCState) {
+    op_PUSH_stack_from_regpair(&mut state.cpu, RegisterPair::BC, &mut state.mem);
+}
+
+// ADD A, u8
+pub(super) fn instr_0xC6(state: &mut GBCState) {
+    let src_val = super::fetch_and_incr_pc(&mut state.cpu, &state.mem) as u8;
+    op_ADD(&mut state.cpu, src_val);
+}
+
+pub(super) fn instr_0xC7(_state: &mut GBCState) {
+    todo!();
+}
+
+pub(super) fn instr_0xC8(_state: &mut GBCState) {
+    todo!();
+}
+
+pub(super) fn instr_0xC9(_state: &mut GBCState) {
+    todo!();
+}
+
+// JP Z, u16
+pub(super) fn instr_0xCA(state: &mut GBCState) {
+    let new_pc = super::fetch_and_incr_pc_16(&mut state.cpu, &state.mem);
+    if state.cpu.registers.get_flags().z {
+        state.cpu.pc = new_pc;
+    }
+}
+
+// Prefix for second instruction set
+pub(super) fn instr_0xCB(state: &mut GBCState) {
+    let instr = super::fetch_and_incr_pc(&mut state.cpu, &state.mem);
+    let instruction_impl = map_CB_prefix_instruction(instr);
+    instruction_impl(&mut state.cpu, &mut state.mem);
+}
+
+// CALL Z, u16
+pub(super) fn instr_0xCC(state: &mut GBCState) {
+    let new_pc = super::fetch_and_incr_pc_16(&mut state.cpu, &state.mem);
+    if state.cpu.registers.get_flags().z {
+        state.cpu.sp -= 1;
+        state.mem.write(state.cpu.sp, state.cpu.pc.high());
+        state.cpu.sp -= 1;
+        state.mem.write(state.cpu.sp, state.cpu.pc.low());
+        state.cpu.pc = new_pc;
+    }
+}
+
+// CALL u16
+pub(super) fn instr_0xCD(state: &mut GBCState) {
+    let new_pc = super::fetch_and_incr_pc_16(&mut state.cpu, &state.mem);
+    state.cpu.sp -= 1;
+    state.mem.write(state.cpu.sp, state.cpu.pc.high());
+    state.cpu.sp -= 1;
+    state.mem.write(state.cpu.sp, state.cpu.pc.low());
+    state.cpu.pc = new_pc;
+}
+
+// ADC A, u8
+pub(super) fn instr_0xCE(state: &mut GBCState) {
+    let val = super::fetch_and_incr_pc(&mut state.cpu, &state.mem);
+    op_ADC(&mut state.cpu, val);
+}
+
+pub(super) fn instr_0xCF(_state: &mut GBCState) {
+    todo!();
+}
+
+pub(super) fn instr_0xD0(_state: &mut GBCState) {
+    todo!();
+}
+
+// POP DE
+pub(super) fn instr_0xD1(state: &mut GBCState) {
+    op_POP_stack_to_regpair(&mut state.cpu, RegisterPair::DE, &state.mem);
+}
+
+// JP NC, u16
+pub(super) fn instr_0xD2(state: &mut GBCState) {
+    let new_pc = super::fetch_and_incr_pc_16(&mut state.cpu, &state.mem);
+    if !state.cpu.registers.get_flags().cy {
+        state.cpu.pc = new_pc;
+    }
+}
+
+pub(super) fn instr_0xD3(_state: &mut GBCState) {
+    todo!();
+}
+
+// CALL NC, u16
+pub(super) fn instr_0xD4(state: &mut GBCState) {
+    let new_pc = super::fetch_and_incr_pc_16(&mut state.cpu, &state.mem);
+    if !state.cpu.registers.get_flags().cy {
+        state.cpu.sp -= 1;
+        state.mem.write(state.cpu.sp, state.cpu.pc.high());
+        state.cpu.sp -= 1;
+        state.mem.write(state.cpu.sp, state.cpu.pc.low());
+        state.cpu.pc = new_pc;
+    }
+}
+
+// PUSH DE
+pub(super) fn instr_0xD5(state: &mut GBCState) {
+    op_PUSH_stack_from_regpair(&mut state.cpu, RegisterPair::DE, &mut state.mem);
+}
+
+// SUB u8
+pub(super) fn instr_0xD6(state: &mut GBCState) {
+    let val = super::fetch_and_incr_pc(&mut state.cpu, &state.mem);
+    op_SUB(&mut state.cpu, val);
+}
+
+pub(super) fn instr_0xD7(_state: &mut GBCState) {
+    todo!();
+}
+
+pub(super) fn instr_0xD8(_state: &mut GBCState) {
+    todo!();
+}
+
+pub(super) fn instr_0xD9(_state: &mut GBCState) {
+    todo!();
+}
+
+// JP C, u16
+pub(super) fn instr_0xDA(state: &mut GBCState) {
+    let new_pc = super::fetch_and_incr_pc_16(&mut state.cpu, &state.mem);
+    if state.cpu.registers.get_flags().cy {
+        state.cpu.pc = new_pc;
+    }
+}
+
+pub(super) fn instr_0xDB(_state: &mut GBCState) {
+    todo!();
+}
+
+// CALL C, u16
+pub(super) fn instr_0xDC(state: &mut GBCState) {
+    let new_pc = super::fetch_and_incr_pc_16(&mut state.cpu, &state.mem);
+    if state.cpu.registers.get_flags().cy {
+        state.cpu.sp -= 1;
+        state.mem.write(state.cpu.sp, state.cpu.pc.high());
+        state.cpu.sp -= 1;
+        state.mem.write(state.cpu.sp, state.cpu.pc.low());
+        state.cpu.pc = new_pc;
+    }
+}
+
+pub(super) fn instr_0xDD(_state: &mut GBCState) {
+    todo!();
+}
+
+// SBC A, u8
+pub(super) fn instr_0xDE(state: &mut GBCState) {
+    let val = super::fetch_and_incr_pc(&mut state.cpu, &state.mem);
+    op_SBC(&mut state.cpu, val);
+}
+
+pub(super) fn instr_0xDF(_state: &mut GBCState) {
+    todo!();
+}
+
+// LD (u8), A
+pub(super) fn instr_0xE0(state: &mut GBCState) {
+    op_LD_u8ptr_from_reg(&mut state.cpu, Register::A, &mut state.mem);
+}
+
+// POP HL
+pub(super) fn instr_0xE1(state: &mut GBCState) {
+    op_POP_stack_to_regpair(&mut state.cpu, RegisterPair::HL, &state.mem);
+}
+
+// LD (C), A
+pub(super) fn instr_0xE2(state: &mut GBCState) {
+    op_LD_regpptr_from_reg(&mut state.cpu, Register::C, Register::A, &mut state.mem);
+}
+
+pub(super) fn instr_0xE3(_state: &mut GBCState) {
+    todo!();
+}
+
+pub(super) fn instr_0xE4(_state: &mut GBCState) {
+    todo!();
+}
+
+// PUSH HL
+pub(super) fn instr_0xE5(state: &mut GBCState) {
+    op_PUSH_stack_from_regpair(&mut state.cpu, RegisterPair::HL, &mut state.mem);
+}
+
+// AND u8
+pub(super) fn instr_0xE6(state: &mut GBCState) {
+    let val = super::fetch_and_incr_pc(&mut state.cpu, &state.mem);
+    op_AND(&mut state.cpu, val);
+}
+
+pub(super) fn instr_0xE7(_state: &mut GBCState) {
+    todo!();
+}
+
+// ADD SP, e
+pub(super) fn instr_0xE8(state: &mut GBCState) {
+    let rhs = super::fetch_and_incr_pc(&mut state.cpu, &state.mem) as u16;
+    let (result, carries) = add_and_get_carries(state.cpu.sp, rhs);
+    state.cpu.sp = result;
+
+    state.cpu.registers.set_flags(&FlagRegister {
+        z: false,
+        n: false,
+        // https://stackoverflow.com/a/57978555
+        h: index_bitmap(carries, 3),
+        cy: index_bitmap(carries, 15),
+    });
+}
+
+// JP (HL)
+pub(super) fn instr_0xE9(state: &mut GBCState) {
+    state.cpu.pc = state.cpu.registers.read_pair(RegisterPair::HL);
+}
+
+// LD (u16), A
+pub(super) fn instr_0xEA(state: &mut GBCState) {
+    op_LD_u16ptr_from_reg(&mut state.cpu, Register::A, &mut state.mem);
+}
+
+pub(super) fn instr_0xEB(_state: &mut GBCState) {
+    todo!();
+}
+
+pub(super) fn instr_0xEC(_state: &mut GBCState) {
+    todo!();
+}
+
+pub(super) fn instr_0xED(_state: &mut GBCState) {
+    todo!();
+}
+
+// XOR u8
+pub(super) fn instr_0xEE(state: &mut GBCState) {
+    let val = super::fetch_and_incr_pc(&mut state.cpu, &state.mem);
+    op_XOR(&mut state.cpu, val);
+}
+
+pub(super) fn instr_0xEF(_state: &mut GBCState) {
+    todo!();
+}
+
+// LD A, (u8)
+pub(super) fn instr_0xF0(state: &mut GBCState) {
+    op_LD_reg_from_u8ptr(&mut state.cpu, Register::A, &state.mem);
+}
+
+// POP AF
+pub(super) fn instr_0xF1(state: &mut GBCState) {
+    op_POP_stack_to_regpair(&mut state.cpu, RegisterPair::AF, &state.mem);
+}
+
+// LD A, (C)
+pub(super) fn instr_0xF2(state: &mut GBCState) {
+    op_LD_reg_from_regptr(&mut state.cpu, Register::A, Register::C, &state.mem);
+}
+
+pub(super) fn instr_0xF3(_state: &mut GBCState) {
+    todo!();
+}
+
+pub(super) fn instr_0xF4(_state: &mut GBCState) {
+    todo!();
+}
+
+// PUSH AF
+pub(super) fn instr_0xF5(state: &mut GBCState) {
+    op_PUSH_stack_from_regpair(&mut state.cpu, RegisterPair::AF, &mut state.mem);
+}
+
+// OR u8
+pub(super) fn instr_0xF6(state: &mut GBCState) {
+    let val = super::fetch_and_incr_pc(&mut state.cpu, &state.mem);
+    op_OR(&mut state.cpu, val);
+}
+
+pub(super) fn instr_0xF7(_state: &mut GBCState) {
+    todo!();
+}
+
+// LDHL SP, i8
+pub(super) fn instr_0xF8(state: &mut GBCState) {
+    // Be careful of data types and sign extensions in this operation!
+    let operand = super::fetch_and_incr_pc(&mut state.cpu, &state.mem) as i8;
+    let (result, carries_or_borrows) = add_i8_to_u16(state.cpu.sp, operand);
+    state.cpu.registers.write_pair(RegisterPair::HL, result);
+    state.cpu.registers.set_flags(&FlagRegister {
+        z: false,
+        n: false,
+        h: index_bitmap(carries_or_borrows, 11),
+        cy: index_bitmap(carries_or_borrows, 15),
+    });
+}
+
+// LD SP, HL
+pub(super) fn instr_0xF9(state: &mut GBCState) {
+    state.cpu.sp = state.cpu.registers.read_pair(RegisterPair::HL);
+}
+
+// LD A, (u16)
+pub(super) fn instr_0xFA(state: &mut GBCState) {
+    op_LD_reg_from_u16ptr(&mut state.cpu, Register::A, &state.mem);
+}
+
+pub(super) fn instr_0xFB(_state: &mut GBCState) {
+    todo!();
+}
+
+pub(super) fn instr_0xFC(_state: &mut GBCState) {
+    todo!();
+}
+
+pub(super) fn instr_0xFD(_state: &mut GBCState) {
+    todo!();
+}
+
+// CP u8
+pub(super) fn instr_0xFE(state: &mut GBCState) {
+    let val = super::fetch_and_incr_pc(&mut state.cpu, &state.mem);
+    op_CP(&mut state.cpu, val);
+}
+
+pub(super) fn instr_0xFF(_state: &mut GBCState) {
+    todo!();
 }
