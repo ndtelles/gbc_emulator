@@ -2,7 +2,7 @@
 
 use crate::{
     gbc::memory::VirtualMemory,
-    util::{add_and_get_carries, index_bitmap, reset_bit, set_bit, subtract_and_get_borrows},
+    util::{add_and_get_carries, index_bitmap, reset_bit, set_bit, subtract_and_get_borrows, Bytes},
 };
 
 use super::{
@@ -547,4 +547,12 @@ pub(super) fn op_RET(cpu: &mut CPU, mem: &mut VirtualMemory) {
     let pc_high = mem.read(cpu.sp) as u16;
     cpu.sp += 1;
     cpu.pc = (pc_high << 8) | pc_low;
+}
+
+pub(super) fn op_RST(cpu: &mut CPU, new_pc: u16, mem: &mut VirtualMemory) {
+    cpu.sp -= 1;
+    mem.write(cpu.sp, cpu.pc.high());
+    cpu.sp -= 1;
+    mem.write(cpu.sp, cpu.pc.low());
+    cpu.pc = new_pc;
 }

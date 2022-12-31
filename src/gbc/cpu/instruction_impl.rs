@@ -1127,8 +1127,9 @@ pub(super) fn instr_0xC6(state: &mut GBCState) {
     op_ADD(&mut state.cpu, src_val);
 }
 
-pub(super) fn instr_0xC7(_state: &mut GBCState) {
-    todo!();
+// RST 0
+pub(super) fn instr_0xC7(state: &mut GBCState) {
+    op_RST(&mut state.cpu, 0x0000, &mut state.mem);
 }
 
 // RET Z
@@ -1186,8 +1187,9 @@ pub(super) fn instr_0xCE(state: &mut GBCState) {
     op_ADC(&mut state.cpu, val);
 }
 
-pub(super) fn instr_0xCF(_state: &mut GBCState) {
-    todo!();
+// RST 1
+pub(super) fn instr_0xCF(state: &mut GBCState) {
+    op_RST(&mut state.cpu, 0x0008, &mut state.mem);
 }
 
 // RET NC
@@ -1237,8 +1239,9 @@ pub(super) fn instr_0xD6(state: &mut GBCState) {
     op_SUB(&mut state.cpu, val);
 }
 
-pub(super) fn instr_0xD7(_state: &mut GBCState) {
-    todo!();
+// RST 2
+pub(super) fn instr_0xD7(state: &mut GBCState) {
+    op_RST(&mut state.cpu, 0x0010, &mut state.mem);
 }
 
 // RET C
@@ -1288,8 +1291,9 @@ pub(super) fn instr_0xDE(state: &mut GBCState) {
     op_SBC(&mut state.cpu, val);
 }
 
-pub(super) fn instr_0xDF(_state: &mut GBCState) {
-    todo!();
+// RST 3
+pub(super) fn instr_0xDF(state: &mut GBCState) {
+    op_RST(&mut state.cpu, 0x0018, &mut state.mem);
 }
 
 // LD (u8), A
@@ -1326,8 +1330,9 @@ pub(super) fn instr_0xE6(state: &mut GBCState) {
     op_AND(&mut state.cpu, val);
 }
 
-pub(super) fn instr_0xE7(_state: &mut GBCState) {
-    todo!();
+// RST 4
+pub(super) fn instr_0xE7(state: &mut GBCState) {
+    op_RST(&mut state.cpu, 0x0020, &mut state.mem);
 }
 
 // ADD SP, e
@@ -1373,8 +1378,9 @@ pub(super) fn instr_0xEE(state: &mut GBCState) {
     op_XOR(&mut state.cpu, val);
 }
 
-pub(super) fn instr_0xEF(_state: &mut GBCState) {
-    todo!();
+// RST 5
+pub(super) fn instr_0xEF(state: &mut GBCState) {
+    op_RST(&mut state.cpu, 0x0028, &mut state.mem);
 }
 
 // LD A, (u8)
@@ -1411,8 +1417,9 @@ pub(super) fn instr_0xF6(state: &mut GBCState) {
     op_OR(&mut state.cpu, val);
 }
 
-pub(super) fn instr_0xF7(_state: &mut GBCState) {
-    todo!();
+// RST 6
+pub(super) fn instr_0xF7(state: &mut GBCState) {
+    op_RST(&mut state.cpu, 0x0030, &mut state.mem);
 }
 
 // LDHL SP, i8
@@ -1457,6 +1464,7 @@ pub(super) fn instr_0xFE(state: &mut GBCState) {
     op_CP(&mut state.cpu, val);
 }
 
-pub(super) fn instr_0xFF(_state: &mut GBCState) {
-    todo!();
+// RST 7
+pub(super) fn instr_0xFF(state: &mut GBCState) {
+    op_RST(&mut state.cpu, 0x0038, &mut state.mem);
 }
