@@ -299,8 +299,17 @@ pub(super) fn instr_0x2E(state: &mut GBCState) {
     op_LD_reg_from_u8(&mut state.cpu, Register::L, &state.mem);
 }
 
-pub(super) fn instr_0x2F(_state: &mut GBCState) {
-    todo!();
+// CPL
+pub(super) fn instr_0x2F(state: &mut GBCState) {
+    let val = state.cpu.registers.read(Register::A);
+    state.cpu.registers.write(Register::A, !val);
+    let existing_flags = state.cpu.registers.get_flags();
+    state.cpu.registers.set_flags(&FlagRegister {
+        z: existing_flags.z,
+        n: true,
+        h: true,
+        cy: existing_flags.cy,
+    });
 }
 
 // JR NC, i8
@@ -372,8 +381,15 @@ pub(super) fn instr_0x36(state: &mut GBCState) {
     op_LD_regpairptr_from_u8(&mut state.cpu, RegisterPair::HL, &mut state.mem);
 }
 
-pub(super) fn instr_0x37(_state: &mut GBCState) {
-    todo!();
+// SCF
+pub(super) fn instr_0x37(state: &mut GBCState) {
+    let existing_flags = state.cpu.registers.get_flags();
+    state.cpu.registers.set_flags(&FlagRegister {
+        z: existing_flags.z,
+        n: false,
+        h: false,
+        cy: true,
+    });
 }
 
 // JR C, i8
@@ -411,8 +427,9 @@ pub(super) fn instr_0x3C(state: &mut GBCState) {
     op_INC_reg(&mut state.cpu, Register::A);
 }
 
-pub(super) fn instr_0x3D(_state: &mut GBCState) {
-    todo!();
+// DEC A
+pub(super) fn instr_0x3D(state: &mut GBCState) {
+    op_DEC_reg(&mut state.cpu, Register::A);
 }
 
 // LD A, u8
@@ -420,8 +437,15 @@ pub(super) fn instr_0x3E(state: &mut GBCState) {
     op_LD_reg_from_u8(&mut state.cpu, Register::A, &state.mem);
 }
 
-pub(super) fn instr_0x3F(_state: &mut GBCState) {
-    todo!();
+// CCF
+pub(super) fn instr_0x3F(state: &mut GBCState) {
+    let existing_flags = state.cpu.registers.get_flags();
+    state.cpu.registers.set_flags(&FlagRegister {
+        z: existing_flags.z,
+        n: false,
+        h: false,
+        cy: !existing_flags.cy,
+    });
 }
 
 // LD B, B
@@ -1212,8 +1236,9 @@ pub(super) fn instr_0xD2(state: &mut GBCState) {
     }
 }
 
+// Invalid Opcode
 pub(super) fn instr_0xD3(_state: &mut GBCState) {
-    todo!();
+    unimplemented!();
 }
 
 // CALL NC, u16
@@ -1254,7 +1279,7 @@ pub(super) fn instr_0xD8(state: &mut GBCState) {
 // RETI
 pub(super) fn instr_0xD9(state: &mut GBCState) {
     op_RET(&mut state.cpu, &mut state.mem);
-    state.intr_ctrl.interrupt_master_enable = true;
+    state.intr_ctrl.enable_interrupts();
 }
 
 // JP C, u16
@@ -1265,8 +1290,9 @@ pub(super) fn instr_0xDA(state: &mut GBCState) {
     }
 }
 
+// Invalid Opcode
 pub(super) fn instr_0xDB(_state: &mut GBCState) {
-    todo!();
+    unimplemented!();
 }
 
 // CALL C, u16
@@ -1281,8 +1307,9 @@ pub(super) fn instr_0xDC(state: &mut GBCState) {
     }
 }
 
+// Invalid Opcode
 pub(super) fn instr_0xDD(_state: &mut GBCState) {
-    todo!();
+    unimplemented!();
 }
 
 // SBC A, u8
@@ -1311,12 +1338,14 @@ pub(super) fn instr_0xE2(state: &mut GBCState) {
     op_LD_regpptr_from_reg(&mut state.cpu, Register::C, Register::A, &mut state.mem);
 }
 
+// Invalid Opcode
 pub(super) fn instr_0xE3(_state: &mut GBCState) {
-    todo!();
+    unimplemented!();
 }
 
+// Invalid Opcode
 pub(super) fn instr_0xE4(_state: &mut GBCState) {
-    todo!();
+    unimplemented!();
 }
 
 // PUSH HL
@@ -1360,16 +1389,19 @@ pub(super) fn instr_0xEA(state: &mut GBCState) {
     op_LD_u16ptr_from_reg(&mut state.cpu, Register::A, &mut state.mem);
 }
 
+// Invalid Opcode
 pub(super) fn instr_0xEB(_state: &mut GBCState) {
-    todo!();
+    unimplemented!();
 }
 
+// Invalid Opcode
 pub(super) fn instr_0xEC(_state: &mut GBCState) {
-    todo!();
+    unimplemented!();
 }
 
+// Invalid Opcode
 pub(super) fn instr_0xED(_state: &mut GBCState) {
-    todo!();
+    unimplemented!();
 }
 
 // XOR u8
@@ -1398,12 +1430,14 @@ pub(super) fn instr_0xF2(state: &mut GBCState) {
     op_LD_reg_from_regptr(&mut state.cpu, Register::A, Register::C, &state.mem);
 }
 
-pub(super) fn instr_0xF3(_state: &mut GBCState) {
-    todo!();
+// DI
+pub(super) fn instr_0xF3(state: &mut GBCState) {
+    state.intr_ctrl.disable_interrupts();
 }
 
+// Invalid Opcode
 pub(super) fn instr_0xF4(_state: &mut GBCState) {
-    todo!();
+    unimplemented!();
 }
 
 // PUSH AF
@@ -1446,16 +1480,19 @@ pub(super) fn instr_0xFA(state: &mut GBCState) {
     op_LD_reg_from_u16ptr(&mut state.cpu, Register::A, &state.mem);
 }
 
-pub(super) fn instr_0xFB(_state: &mut GBCState) {
-    todo!();
+// EI
+pub(super) fn instr_0xFB(state: &mut GBCState) {
+    state.intr_ctrl.enable_interrupts();
 }
 
+// Invalid Opcode
 pub(super) fn instr_0xFC(_state: &mut GBCState) {
-    todo!();
+    unimplemented!();
 }
 
+// Invalid Opcode
 pub(super) fn instr_0xFD(_state: &mut GBCState) {
-    todo!();
+    unimplemented!();
 }
 
 // CP u8

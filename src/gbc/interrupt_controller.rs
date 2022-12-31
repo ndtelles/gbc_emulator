@@ -6,7 +6,7 @@ const INTERRUPT_REQUEST_ADDR: u16 = 0xFF0F;
 const INTERRUPT_ENABLE_ADDR: u16 = 0xFFFF;
 
 pub struct InterruptController {
-    pub interrupt_master_enable: bool,
+    interrupt_master_enable: bool,
 }
 
 impl InterruptController {
@@ -14,6 +14,14 @@ impl InterruptController {
         Self {
             interrupt_master_enable: false,
         }
+    }
+
+    pub fn enable_interrupts(&mut self) {
+        self.interrupt_master_enable = true;
+    }
+
+    pub fn disable_interrupts(&mut self) {
+        self.interrupt_master_enable = false;
     }
 }
 
