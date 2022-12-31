@@ -1079,8 +1079,11 @@ pub(super) fn instr_0xBF(state: &mut GBCState) {
     op_CP_reg(&mut state.cpu, Register::A);
 }
 
-pub(super) fn instr_0xC0(_state: &mut GBCState) {
-    todo!();
+// RET NZ
+pub(super) fn instr_0xC0(state: &mut GBCState) {
+    if !state.cpu.registers.get_flags().z {
+        op_RET(&mut state.cpu, &mut state.mem);
+    }
 }
 
 // POP BC
@@ -1128,12 +1131,16 @@ pub(super) fn instr_0xC7(_state: &mut GBCState) {
     todo!();
 }
 
-pub(super) fn instr_0xC8(_state: &mut GBCState) {
-    todo!();
+// RET Z
+pub(super) fn instr_0xC8(state: &mut GBCState) {
+    if state.cpu.registers.get_flags().z {
+        op_RET(&mut state.cpu, &mut state.mem);
+    }
 }
 
-pub(super) fn instr_0xC9(_state: &mut GBCState) {
-    todo!();
+// RET
+pub(super) fn instr_0xC9(state: &mut GBCState) {
+    op_RET(&mut state.cpu, &mut state.mem);
 }
 
 // JP Z, u16
@@ -1183,8 +1190,11 @@ pub(super) fn instr_0xCF(_state: &mut GBCState) {
     todo!();
 }
 
-pub(super) fn instr_0xD0(_state: &mut GBCState) {
-    todo!();
+// RET NC
+pub(super) fn instr_0xD0(state: &mut GBCState) {
+    if !state.cpu.registers.get_flags().cy {
+        op_RET(&mut state.cpu, &mut state.mem);
+    }
 }
 
 // POP DE
@@ -1231,12 +1241,17 @@ pub(super) fn instr_0xD7(_state: &mut GBCState) {
     todo!();
 }
 
-pub(super) fn instr_0xD8(_state: &mut GBCState) {
-    todo!();
+// RET C
+pub(super) fn instr_0xD8(state: &mut GBCState) {
+    if state.cpu.registers.get_flags().cy {
+        op_RET(&mut state.cpu, &mut state.mem);
+    }
 }
 
-pub(super) fn instr_0xD9(_state: &mut GBCState) {
-    todo!();
+// RETI
+pub(super) fn instr_0xD9(state: &mut GBCState) {
+    op_RET(&mut state.cpu, &mut state.mem);
+    state.intr_ctrl.interrupt_master_enable = true;
 }
 
 // JP C, u16

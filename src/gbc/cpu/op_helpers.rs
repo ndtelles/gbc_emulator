@@ -540,3 +540,11 @@ pub(super) fn op_RES_from_HLptr(cpu: &mut CPU, bit: usize, mem: &mut VirtualMemo
     let val = mem.read(addr);
     mem.write(addr, reset_bit(val, bit));
 }
+
+pub(super) fn op_RET(cpu: &mut CPU, mem: &mut VirtualMemory) {
+    let pc_low = mem.read(cpu.sp) as u16;
+    cpu.sp += 1;
+    let pc_high = mem.read(cpu.sp) as u16;
+    cpu.sp += 1;
+    cpu.pc = (pc_high << 8) | pc_low;
+}
