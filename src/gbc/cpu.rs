@@ -6,8 +6,10 @@ mod register;
 
 use self::instructions::map_instruction;
 use self::register::{RegisterMap, RegisterMapMethods};
-use super::memory::{VirtualMemory, PROGRAM_START_ADDR};
+use super::memory::VirtualMemory;
 use super::GBCState;
+
+const PROGRAM_START_ADDR: u16 = 0x0100;
 
 pub struct CPU {
     registers: RegisterMap,

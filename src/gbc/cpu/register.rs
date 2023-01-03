@@ -17,14 +17,15 @@ pub trait RegisterMapMethods {
 impl RegisterMapMethods for RegisterMap {
     fn new() -> Self {
         enum_map! {
-            Register::A => 0,
-            Register::F => 0,
-            Register::B => 0,
-            Register::C => 0,
-            Register::D => 0,
-            Register::E => 0,
-            Register::H => 0,
-            Register::L => 0
+            // Initial value of 0x11 indicates this is CGB hardware
+            Register::A => 0x11, 
+            Register::F => 0x00,
+            Register::B => 0x00,
+            Register::C => 0x00,
+            Register::D => 0x00,
+            Register::E => 0x00,
+            Register::H => 0x00,
+            Register::L => 0x00
         }
     }
 

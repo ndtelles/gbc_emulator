@@ -1379,7 +1379,7 @@ pub(super) fn instr_0xE8(state: &mut GBCState) {
     });
 }
 
-// JP (HL)
+// JP HL
 pub(super) fn instr_0xE9(state: &mut GBCState) {
     state.cpu.pc = state.cpu.registers.read_pair(RegisterPair::HL);
 }
