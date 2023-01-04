@@ -1,6 +1,7 @@
 mod cpu;
 mod interrupt_controller;
 mod memory;
+mod render_engine;
 
 use crate::gbc::cpu::CPU;
 use crate::gbc::memory::VirtualMemory;
@@ -14,7 +15,7 @@ pub struct GBC {
 impl GBC {
     pub fn new() -> Self {
         Self {
-            state: GBCState::new()
+            state: GBCState::new(),
         }
     }
 
@@ -29,6 +30,7 @@ pub struct GBCState {
     cpu: CPU,
     mem: VirtualMemory,
     intr_ctrl: InterruptController,
+    machine_cycle: u8,
 }
 
 impl GBCState {
@@ -37,6 +39,7 @@ impl GBCState {
             cpu: CPU::new(),
             mem: VirtualMemory::new(),
             intr_ctrl: InterruptController::new(),
+            machine_cycle: 0,
         }
     }
 }
