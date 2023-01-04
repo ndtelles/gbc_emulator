@@ -171,8 +171,7 @@ impl VirtualMemory {
         }
     }
 
-    // Map virtual memory address to actual memory. Returns a reference to the memory area and
-    // the currently active bank
+    // Map virtual memory address to memory areas
     fn map_memory(&self, addr: u16) -> (MemoryAreaName, usize) {
         match addr {
             PRG_ROM_FIXED_ADDR..=PRG_ROM_FIXED_ADDR_END => (MemoryAreaName::PrgRomFixed, 0),
