@@ -1,11 +1,13 @@
 mod cpu;
+mod dma_controller;
 mod interrupt_controller;
-mod memory;
+mod virtual_memory;
 mod render_engine;
 
 use crate::gbc::cpu::CPU;
-use crate::gbc::memory::VirtualMemory;
+use crate::gbc::virtual_memory::VirtualMemory;
 
+use self::dma_controller::DMAController;
 use self::interrupt_controller::InterruptController;
 
 pub struct GBC {
@@ -30,7 +32,8 @@ pub struct GBCState {
     cpu: CPU,
     mem: VirtualMemory,
     intr_ctrl: InterruptController,
-    machine_cycle: u8,
+    dma_ctrl: DMAController,
+    cycle: u16,
 }
 
 impl GBCState {
@@ -39,7 +42,8 @@ impl GBCState {
             cpu: CPU::new(),
             mem: VirtualMemory::new(),
             intr_ctrl: InterruptController::new(),
-            machine_cycle: 0,
+            dma_ctrl: DMAController::new(),
+            cycle: 0,
         }
     }
 }

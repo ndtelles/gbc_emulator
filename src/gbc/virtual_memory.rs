@@ -1,5 +1,7 @@
 use enum_map::{enum_map, Enum, EnumMap};
 
+use super::GBCState;
+
 // Memory areas boundaries in contigous order. Would use ranges but const ranges can't be used in rust for pattern matching :(
 const PRG_ROM_FIXED_ADDR: u16 = 0x0000;
 const PRG_ROM_FIXED_ADDR_END: u16 = 0x3FFF;
@@ -37,7 +39,7 @@ const WORK_RAM_BANK_REGISTER: u16 = 0xFF70;
 const VRAM_BANK_REGISTER: u16 = 0xFF4F;
 
 #[derive(Enum)]
-pub enum MemoryAreaName {
+enum MemoryAreaName {
     PrgRomFixed,
     PrgRomBanked,
     Vram,
@@ -51,6 +53,7 @@ pub enum MemoryAreaName {
 }
 
 enum MemoryPermission {
+    None,
     ReadOnly,
     ReadAndWrite,
 }
@@ -63,6 +66,7 @@ struct MemoryArea {
     start_addr: u16,
     bank_size: usize,
     num_banks: usize,
+    active_bank: usize,
     permission: MemoryPermission,
     data: Vec<u8>,
 }
@@ -80,41 +84,43 @@ impl MemoryArea {
             start_addr,
             bank_size,
             num_banks,
+            active_bank: 0,
             permission,
             data: vec![0x00; bank_size * num_banks],
         }
     }
 
     // Convert the u16 virtual address to an index in the data vec
-    fn virtual_address_to_data_index(&self, addr: u16, bank: usize) -> usize {
-        debug_assert!(bank < self.num_banks);
-        (addr - self.start_addr) as usize + (self.bank_size * bank)
+    fn virtual_address_to_data_index(&self, addr: u16) -> usize {
+        debug_assert!(self.active_bank < self.num_banks);
+        (addr - self.start_addr) as usize + (self.bank_size * self.active_bank)
     }
 
-    pub fn read(&self, addr: u16, bank: usize) -> u8 {
-        let idx = self.virtual_address_to_data_index(addr, bank);
+    pub fn read(&self, addr: u16) -> u8 {
+        if let MemoryPermission::None = self.permission {
+            return 0xFF;
+        }
+        let idx = self.virtual_address_to_data_index(addr);
         self.data[idx]
     }
 
-    pub fn write(&mut self, addr: u16, bank: usize, val: u8) {
+    pub fn write(&mut self, addr: u16, val: u8) {
         if let MemoryPermission::ReadOnly = self.permission {
-            // Read only memory is often written to to peform special hardware operations.
-            // Don't actually write to the memory.
             return;
         }
-        let idx = self.virtual_address_to_data_index(addr, bank);
+        let idx = self.virtual_address_to_data_index(addr);
         self.data[idx] = val;
     }
 }
 
 pub struct VirtualMemory {
-    memory_areas: EnumMap<MemoryAreaName, MemoryArea>,
+    areas: EnumMap<MemoryAreaName, MemoryArea>,
 }
 
 impl VirtualMemory {
     pub fn new() -> Self {
         Self {
-            memory_areas: enum_map! {
+            areas: enum_map! {
                 MemoryAreaName::PrgRomFixed => MemoryArea::new(
                     PRG_ROM_FIXED_ADDR,
                     PRG_ROM_FIXED_ADDR_END,
@@ -161,7 +167,7 @@ impl VirtualMemory {
                     1,
                     MemoryPermission::ReadAndWrite,
                 ),
-                                MemoryAreaName::IERegister => MemoryArea::new(
+                MemoryAreaName::IERegister => MemoryArea::new(
                     IE_REGISTER_ADDR,
                     IE_REGISTER_ADDR,
                     1,
@@ -172,49 +178,63 @@ impl VirtualMemory {
     }
 
     // Map virtual memory address to memory areas
-    fn map_memory(&self, addr: u16) -> (MemoryAreaName, usize) {
-        match addr {
-            PRG_ROM_FIXED_ADDR..=PRG_ROM_FIXED_ADDR_END => (MemoryAreaName::PrgRomFixed, 0),
-            PRG_ROM_BANKED_ADDR..=PRG_ROM_BANKED_ADDR_END => (MemoryAreaName::PrgRomBanked, 0),
-            VRAM_ADDR..=VRAM_ADDR_END => {
-                let bank = self.get_vram_bank();
-                (MemoryAreaName::Vram, bank)
-            }
-            EXTERNAL_RAM_ADDR..=EXTERNAL_RAM_ADDR_END => (MemoryAreaName::ExternalRam, 0),
-            WORK_RAM_FIXED_ADDR..=WORK_RAM_FIXED_ADDR_END => (MemoryAreaName::WorkRamFixed, 0),
-            WORK_RAM_BANKED_ADDR..=WORK_RAM_BANKED_ADDR_END => {
-                let bank = self.get_work_ram_bank();
-                (MemoryAreaName::WorkRamBanked, bank)
-            }
-            OAM_ADDR..=OAM_ADDR_END => (MemoryAreaName::Oam, 0),
-            IO_REGISTERS_ADDR..=IO_REGISTERS_ADDR_END => (MemoryAreaName::IORegisters, 0),
-            HIGH_RAM_ADDR..=HIGH_RAM_ADDR_END => (MemoryAreaName::HighRam, 0),
-            IE_REGISTER_ADDR => (MemoryAreaName::IERegister, 0),
-            // Invalid address areas
-            0xE000..=0xFDFF | 0xFEA0..=0xFEFF => unimplemented!(),
+
+    // fn get_work_ram_bank(&self) -> usize {
+    //     let io_reg_mem = &self.memory_areas[MemoryAreaName::IORegisters];
+    //     // First 3 bits hold the flags
+    //     let bank_reg = io_reg_mem.read(WORK_RAM_BANK_REGISTER, 0) & 0x07;
+    //     // Both 0 and 1 mean the first bank
+    //     bank_reg.saturating_sub(1).into()
+    // }
+
+    // fn get_vram_bank(&self) -> usize {
+    //     let io_reg_mem = &self.memory_areas[MemoryAreaName::IORegisters];
+    //     (io_reg_mem.read(VRAM_BANK_REGISTER, 0) & 0x01).into()
+    // }
+}
+
+fn map_memory(addr: u16) -> MemoryAreaName {
+    match addr {
+        PRG_ROM_FIXED_ADDR..=PRG_ROM_FIXED_ADDR_END => MemoryAreaName::PrgRomFixed,
+        PRG_ROM_BANKED_ADDR..=PRG_ROM_BANKED_ADDR_END => MemoryAreaName::PrgRomBanked,
+        VRAM_ADDR..=VRAM_ADDR_END => MemoryAreaName::Vram,
+        EXTERNAL_RAM_ADDR..=EXTERNAL_RAM_ADDR_END => MemoryAreaName::ExternalRam,
+        WORK_RAM_FIXED_ADDR..=WORK_RAM_FIXED_ADDR_END => MemoryAreaName::WorkRamFixed,
+        WORK_RAM_BANKED_ADDR..=WORK_RAM_BANKED_ADDR_END => MemoryAreaName::WorkRamBanked,
+        OAM_ADDR..=OAM_ADDR_END => MemoryAreaName::Oam,
+        IO_REGISTERS_ADDR..=IO_REGISTERS_ADDR_END => MemoryAreaName::IORegisters,
+        HIGH_RAM_ADDR..=HIGH_RAM_ADDR_END => MemoryAreaName::HighRam,
+        IE_REGISTER_ADDR => MemoryAreaName::IERegister,
+        // Invalid address areas
+        0xE000..=0xFDFF | 0xFEA0..=0xFEFF => unimplemented!(),
+    }
+}
+
+/**
+ * Writing to some addresses trigger events such as setting bank registers or starting DMA.
+ */
+fn handle_write_triggered_events(state: &mut GBCState, addr: u16, val: u8) {
+    match addr {
+        WORK_RAM_BANK_REGISTER => {
+            // First 3 bits hold the flags. Both 0 and 1 mean the first bank
+            let new_bank = (val & 0x07).saturating_sub(1).into();
+            state.mem.areas[MemoryAreaName::WorkRamBanked].active_bank = new_bank;
         }
-    }
+        VRAM_BANK_REGISTER => {
+            let new_bank = (val & 0x01).into();
+            state.mem.areas[MemoryAreaName::Vram].active_bank = new_bank;
+        }
+        _ => {}
+    };
+}
 
-    fn get_work_ram_bank(&self) -> usize {
-        let io_reg_mem = &self.memory_areas[MemoryAreaName::IORegisters];
-        // First 3 bits hold the flags
-        let bank_reg = io_reg_mem.read(WORK_RAM_BANK_REGISTER, 0) & 0x07;
-        // Both 0 and 1 mean the first bank
-        bank_reg.saturating_sub(1).into()
-    }
+pub fn read(state: &GBCState, addr: u16) -> u8 {
+    let area = map_memory(addr);
+    state.mem.areas[area].read(addr)
+}
 
-    fn get_vram_bank(&self) -> usize {
-        let io_reg_mem = &self.memory_areas[MemoryAreaName::IORegisters];
-        (io_reg_mem.read(VRAM_BANK_REGISTER, 0) & 0x01).into()
-    }
-
-    pub fn read(&self, addr: u16) -> u8 {
-        let (area, bank) = self.map_memory(addr);
-        self.memory_areas[area].read(addr, bank)
-    }
-
-    pub fn write(&mut self, addr: u16, val: u8) {
-        let (area, bank) = self.map_memory(addr);
-        self.memory_areas[area].write(addr, bank, val);
-    }
+pub fn write(state: &mut GBCState, addr: u16, val: u8) {
+    let area = map_memory(addr);
+    state.mem.areas[area].write(addr, val);
+    handle_write_triggered_events(state, addr, val);
 }

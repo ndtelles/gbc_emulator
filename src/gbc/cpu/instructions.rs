@@ -1,6 +1,6 @@
-use crate::gbc::{memory::VirtualMemory, GBCState};
+use crate::gbc::GBCState;
 
-use super::{CPU, instruction_impl::*, cb_instruction_impl::*};
+use super::{cb_instruction_impl::*, instruction_impl::*};
 
 pub fn map_instruction(instruction: u8) -> fn(&mut GBCState) {
     match instruction {
@@ -265,7 +265,7 @@ pub fn map_instruction(instruction: u8) -> fn(&mut GBCState) {
 
 // Instructions that follow the 0xCB opcode
 #[allow(non_snake_case)]
-pub fn map_CB_prefix_instruction(instruction: u8) -> fn(&mut CPU, &mut VirtualMemory) {
+pub fn map_CB_prefix_instruction(instruction: u8) -> fn(&mut GBCState) {
     match instruction {
         0x00 => instr_0xCB00,
         0x01 => instr_0xCB01,

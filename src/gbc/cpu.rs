@@ -6,8 +6,7 @@ mod register;
 
 use self::instructions::map_instruction;
 use self::register::{RegisterMap, RegisterMapMethods};
-use super::memory::VirtualMemory;
-use super::GBCState;
+use super::{GBCState, virtual_memory};
 
 const PROGRAM_START_ADDR: u16 = 0x0100;
 
@@ -30,19 +29,19 @@ impl CPU {
 }
 
 // Fetch next 8 bits at program counter
-fn fetch_and_incr_pc(cpu: &mut CPU, mem: &VirtualMemory) -> u8 {
-    let data = mem.read(cpu.pc);
-    cpu.pc += 1;
+fn fetch_and_incr_pc(state: &mut GBCState) -> u8 {
+    let data = virtual_memory::read(state, state.cpu.pc);
+    state.cpu.pc += 1;
     data
 }
 
 // Fetch next 16 bits (little endian) at program counter. Return as big endian
-fn fetch_and_incr_pc_16(cpu: &mut CPU, mem: &VirtualMemory) -> u16 {
-    fetch_and_incr_pc(cpu, mem) as u16 | ((fetch_and_incr_pc(cpu, mem) as u16) << 8)
+fn fetch_and_incr_pc_16(state: &mut GBCState) -> u16 {
+    fetch_and_incr_pc(state) as u16 | ((fetch_and_incr_pc(state) as u16) << 8)
 }
 
 pub fn execute(state: &mut GBCState) {
-    let instruction = fetch_and_incr_pc(&mut state.cpu, &state.mem);
+    let instruction = fetch_and_incr_pc(state);
     let instruction_impl = map_instruction(instruction);
     instruction_impl(state);
 }

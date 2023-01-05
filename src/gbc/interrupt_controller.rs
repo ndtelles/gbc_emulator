@@ -1,6 +1,6 @@
 use crate::util::{reset_bit, set_bit};
 
-use super::memory::VirtualMemory;
+use super::virtual_memory::VirtualMemory;
 
 const INTERRUPT_REQUEST_ADDR: u16 = 0xFF0F;
 const INTERRUPT_ENABLE_ADDR: u16 = 0xFFFF;
@@ -34,22 +34,22 @@ pub enum InterruptFlag {
     VerticalBlanking = 0,
 }
 
-pub fn set_interrupt_request_flag(flag: InterruptFlag, mem: &mut VirtualMemory) {
-    let flags = mem.read(INTERRUPT_REQUEST_ADDR);
-    mem.write(INTERRUPT_REQUEST_ADDR, set_bit(flags, flag as usize));
-}
+// pub fn set_interrupt_request_flag(flag: InterruptFlag, mem: &mut VirtualMemory) {
+//     let flags = mem.read(INTERRUPT_REQUEST_ADDR);
+//     mem.write(INTERRUPT_REQUEST_ADDR, set_bit(flags, flag as usize));
+// }
 
-pub fn reset_interrupt_request_flag(flag: InterruptFlag, mem: &mut VirtualMemory) {
-    let flags = mem.read(INTERRUPT_REQUEST_ADDR);
-    mem.write(INTERRUPT_REQUEST_ADDR, reset_bit(flags, flag as usize));
-}
+// pub fn reset_interrupt_request_flag(flag: InterruptFlag, mem: &mut VirtualMemory) {
+//     let flags = mem.read(INTERRUPT_REQUEST_ADDR);
+//     mem.write(INTERRUPT_REQUEST_ADDR, reset_bit(flags, flag as usize));
+// }
 
-pub fn set_interrupt_enable_flag(flag: InterruptFlag, mem: &mut VirtualMemory) {
-    let flags = mem.read(INTERRUPT_ENABLE_ADDR);
-    mem.write(INTERRUPT_ENABLE_ADDR, set_bit(flags, flag as usize));
-}
+// pub fn set_interrupt_enable_flag(flag: InterruptFlag, mem: &mut VirtualMemory) {
+//     let flags = mem.read(INTERRUPT_ENABLE_ADDR);
+//     mem.write(INTERRUPT_ENABLE_ADDR, set_bit(flags, flag as usize));
+// }
 
-pub fn reset_interrupt_enable_flag(flag: InterruptFlag, mem: &mut VirtualMemory) {
-    let flags = mem.read(INTERRUPT_ENABLE_ADDR);
-    mem.write(INTERRUPT_ENABLE_ADDR, reset_bit(flags, flag as usize));
-}
+// pub fn reset_interrupt_enable_flag(flag: InterruptFlag, mem: &mut VirtualMemory) {
+//     let flags = mem.read(INTERRUPT_ENABLE_ADDR);
+//     mem.write(INTERRUPT_ENABLE_ADDR, reset_bit(flags, flag as usize));
+// }

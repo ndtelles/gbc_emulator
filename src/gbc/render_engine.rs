@@ -3,7 +3,7 @@ use std::collections::VecDeque;
 use super::GBCState;
 
 struct Pixel {
-    color: u8,
+    color_idx: u8,
     palette: u8,
     sprite_priority: u8,
     background_priority: bool,
