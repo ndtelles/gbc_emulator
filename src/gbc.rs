@@ -24,6 +24,7 @@ impl GBC {
     pub fn run(&mut self) {
         loop {
             cpu::execute(&mut self.state);
+            dma_controller::tick(&mut self.state);
         }
     }
 }
@@ -33,7 +34,7 @@ pub struct GBCState {
     mem: VirtualMemory,
     intr_ctrl: InterruptController,
     dma_ctrl: DMAController,
-    cycle: u16,
+    machine_cycle: u16,
 }
 
 impl GBCState {
@@ -43,7 +44,7 @@ impl GBCState {
             mem: VirtualMemory::new(),
             intr_ctrl: InterruptController::new(),
             dma_ctrl: DMAController::new(),
-            cycle: 0,
+            machine_cycle: 0,
         }
     }
 }
