@@ -40,6 +40,7 @@ const IE_REGISTER_ADDR: u16 = 0xFFFF;
 const WORK_RAM_BANK_REGISTER: u16 = 0xFF70;
 const VRAM_BANK_REGISTER: u16 = 0xFF4F;
 const OAM_DMA_REG_ADDR: u16 = 0xFF46;
+pub const VRAM_DMA_REG_ADDR: u16 = 0xFF55;
 
 #[derive(Enum)]
 enum MemoryAreaName {
@@ -109,6 +110,7 @@ impl MemoryArea {
         self.data[idx]
     }
 
+    // Return cow which lets us return either a borrowed or owned value
     pub fn read_len(&self, addr: u16, length: usize) -> Cow<[u8]> {
         if let MemoryPermission::None = self.permission {
             return Cow::from(vec![0xFF; length]);
@@ -130,7 +132,7 @@ impl MemoryArea {
         if let MemoryPermission::ReadOnly = self.permission {
             return;
         }
-        let idx  = self.virtual_address_to_data_index(addr);
+        let idx = self.virtual_address_to_data_index(addr);
         let end_idx = idx + vals.len();
         self.data.splice(idx..end_idx, vals.iter().cloned());
     }
@@ -233,6 +235,7 @@ fn handle_write_triggered_events(state: &mut GBCState, addr: u16, val: u8) {
             state.mem.areas[MemoryAreaName::Vram].active_bank = new_bank;
         }
         OAM_DMA_REG_ADDR => dma_controller::trigger_oam_transfer(state, val),
+        VRAM_DMA_REG_ADDR => dma_controller::trigger_vram_transfer(state, val),
         _ => {}
     };
 }
@@ -242,30 +245,38 @@ pub fn read(state: &GBCState, addr: u16) -> u8 {
     state.mem.areas[area].read(addr)
 }
 
-pub fn read_len(state: &GBCState, addr: u16, length: usize) -> Cow<[u8]> {
+pub fn read_bytes(state: &GBCState, addr: u16, length_bytes: usize) -> Cow<[u8]> {
     let area = &state.mem.areas[map_memory(addr)];
 
     // How many bytes can we actually read from this memory area
     let area_read_len = (area.end_addr - addr + 1).into();
-    let bytes_to_read = min(area_read_len, length);
+    let bytes_to_read = min(area_read_len, length_bytes);
 
     let mut result = area.read_len(addr, bytes_to_read);
 
     // We may have to read across multiple memory areas
-    if length > bytes_to_read {
-        let more = read_len(state, area.end_addr.wrapping_add(1), length - bytes_to_read);
+    if length_bytes > bytes_to_read {
+        let more = read_bytes(
+            state,
+            area.end_addr.wrapping_add(1),
+            length_bytes - bytes_to_read,
+        );
         result = Cow::from([result.as_ref(), more.as_ref()].concat());
     }
     result
 }
 
 pub fn write(state: &mut GBCState, addr: u16, val: u8) {
-    let area = map_memory(addr);
-    state.mem.areas[area].write(addr, val);
+    write_without_triggers(state, addr, val);
     handle_write_triggered_events(state, addr, val);
 }
 
-pub fn write_len(state: &mut GBCState, addr: u16, vals: &[u8]) {
+pub fn write_without_triggers(state: &mut GBCState, addr: u16, val: u8) {
+    let area = map_memory(addr);
+    state.mem.areas[area].write(addr, val);
+}
+
+pub fn write_bytes(state: &mut GBCState, addr: u16, vals: &[u8]) {
     let area = &mut state.mem.areas[map_memory(addr)];
     // How many bytes can we actually write to this memory area
     let area_write_len = (area.end_addr - addr + 1).into();
@@ -276,6 +287,6 @@ pub fn write_len(state: &mut GBCState, addr: u16, vals: &[u8]) {
     // We may have to write across multiple memory areas
     if !rest.is_empty() {
         let next_addr = area.end_addr.wrapping_add(1);
-        write_len(state, next_addr, rest);
+        write_bytes(state, next_addr, rest);
     }
 }

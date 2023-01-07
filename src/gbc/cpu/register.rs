@@ -1,6 +1,6 @@
 use enum_map::{enum_map, Enum, EnumMap};
 
-use crate::util::{index_bitmap, Bytes};
+use crate::util::{index_bits, Bytes, combine_high_low};
 
 pub type RegisterMap = EnumMap<Register, u8>;
 
@@ -18,7 +18,7 @@ impl RegisterMapMethods for RegisterMap {
     fn new() -> Self {
         enum_map! {
             // Initial value of 0x11 indicates this is CGB hardware
-            Register::A => 0x11, 
+            Register::A => 0x11,
             Register::F => 0x00,
             Register::B => 0x00,
             Register::C => 0x00,
@@ -39,7 +39,7 @@ impl RegisterMapMethods for RegisterMap {
 
     fn read_pair(&self, pair: RegisterPair) -> u16 {
         let (high, low) = map_register_pair_to_register(pair);
-        ((self.read(high) as u16) << 8) | self.read(low) as u16
+        combine_high_low(self.read(high), self.read(low))
     }
 
     fn write_pair(&mut self, pair: RegisterPair, val: u16) {
@@ -96,10 +96,10 @@ pub struct FlagRegister {
 impl From<u8> for FlagRegister {
     fn from(val: u8) -> Self {
         Self {
-            z: index_bitmap(val, 7),
-            n: index_bitmap(val, 6),
-            h: index_bitmap(val, 5),
-            cy: index_bitmap(val, 4),
+            z: index_bits(val, 7),
+            n: index_bits(val, 6),
+            h: index_bits(val, 5),
+            cy: index_bits(val, 4),
         }
     }
 }

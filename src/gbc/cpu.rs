@@ -4,6 +4,8 @@ mod instructions;
 mod op_helpers;
 mod register;
 
+use crate::util::{combine_high_low};
+
 use self::instructions::map_instruction;
 use self::register::{RegisterMap, RegisterMapMethods};
 use super::{GBCState, virtual_memory};
@@ -37,7 +39,9 @@ fn fetch_and_incr_pc(state: &mut GBCState) -> u8 {
 
 // Fetch next 16 bits (little endian) at program counter. Return as big endian
 fn fetch_and_incr_pc_16(state: &mut GBCState) -> u16 {
-    fetch_and_incr_pc(state) as u16 | ((fetch_and_incr_pc(state) as u16) << 8)
+    let low = fetch_and_incr_pc(state);
+    let high = fetch_and_incr_pc(state);
+    combine_high_low(high, low)
 }
 
 pub fn execute(state: &mut GBCState) {

@@ -18,9 +18,9 @@ pub fn subtract_and_get_borrows<T: WrappingSub + PrimInt + Unsigned>(lhs: T, rhs
     (diff, borrows)
 }
 
-pub fn index_bitmap<T: PrimInt + Into<usize>>(bitmap: T, index: usize) -> bool {
+pub fn index_bits<T: PrimInt + Into<usize>>(bits: T, index: usize) -> bool {
     debug_assert!((size_of::<T>() * 8) > index);
-    (bitmap.into() & (0x01 << index)) != 0
+    (bits.into() & (0x01 << index)) != 0
 }
 
 pub fn set_bit(val: u8, bit: usize) -> u8 {
@@ -42,6 +42,10 @@ pub fn add_i8_to_u16(lhs: u16, rhs: i8) -> (u16, u16) {
     } else {
         add_and_get_carries(lhs, rhs as u16)
     }
+}
+
+pub fn combine_high_low(high: u8, low: u8) -> u16 {
+    ((high as u16) << 8) | (low as u16)
 }
 
 pub trait Bytes {

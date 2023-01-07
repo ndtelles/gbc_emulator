@@ -2,7 +2,7 @@
 
 use crate::{
     gbc::{virtual_memory, GBCState},
-    util::{add_and_get_carries, add_i8_to_u16, index_bitmap, subtract_and_get_borrows, Bytes},
+    util::{add_and_get_carries, add_i8_to_u16, index_bits, subtract_and_get_borrows, Bytes},
 };
 
 use super::{
@@ -55,7 +55,7 @@ pub(super) fn instr_0x07(state: &mut GBCState) {
         z: false,
         n: false,
         h: false,
-        cy: index_bitmap(val, 7),
+        cy: index_bits(val, 7),
     });
     state.cpu.registers.write(Register::A, val.rotate_left(1));
 }
@@ -104,7 +104,7 @@ pub(super) fn instr_0x0F(state: &mut GBCState) {
         z: false,
         n: false,
         h: false,
-        cy: index_bitmap(val, 0),
+        cy: index_bits(val, 0),
     });
     state.cpu.registers.write(Register::A, val.rotate_right(1));
 }
@@ -151,7 +151,7 @@ pub(super) fn instr_0x17(state: &mut GBCState) {
         z: false,
         n: false,
         h: false,
-        cy: index_bitmap(val, 7),
+        cy: index_bits(val, 7),
     });
     let result = (val << 1) | (old_cy as u8);
     state.cpu.registers.write(Register::A, result);
@@ -201,7 +201,7 @@ pub(super) fn instr_0x1F(state: &mut GBCState) {
         z: false,
         n: false,
         h: false,
-        cy: index_bitmap(val, 0),
+        cy: index_bits(val, 0),
     });
     let result = ((old_cy as u8) << 7) | (val >> 1);
     state.cpu.registers.write(Register::A, result);
@@ -351,7 +351,7 @@ pub(super) fn instr_0x34(state: &mut GBCState) {
     state.cpu.registers.set_flags(&FlagRegister {
         z: result == 0,
         n: false,
-        h: index_bitmap(carries, 3),
+        h: index_bits(carries, 3),
         cy: state.cpu.registers.get_flags().cy,
     });
 }
@@ -366,7 +366,7 @@ pub(super) fn instr_0x35(state: &mut GBCState) {
     state.cpu.registers.set_flags(&FlagRegister {
         z: result == 0,
         n: true,
-        h: index_bitmap(borrows, 3),
+        h: index_bits(borrows, 3),
         cy: state.cpu.registers.get_flags().cy,
     });
 }
@@ -1369,8 +1369,8 @@ pub(super) fn instr_0xE8(state: &mut GBCState) {
         z: false,
         n: false,
         // https://stackoverflow.com/a/57978555
-        h: index_bitmap(carries, 3),
-        cy: index_bitmap(carries, 15),
+        h: index_bits(carries, 3),
+        cy: index_bits(carries, 15),
     });
 }
 
@@ -1460,8 +1460,8 @@ pub(super) fn instr_0xF8(state: &mut GBCState) {
     state.cpu.registers.set_flags(&FlagRegister {
         z: false,
         n: false,
-        h: index_bitmap(carries_or_borrows, 11),
-        cy: index_bitmap(carries_or_borrows, 15),
+        h: index_bits(carries_or_borrows, 11),
+        cy: index_bits(carries_or_borrows, 15),
     });
 }
 

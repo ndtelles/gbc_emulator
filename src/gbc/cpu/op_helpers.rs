@@ -1,13 +1,8 @@
 #![allow(non_snake_case)]
 
 use crate::{
-    gbc::{
-        virtual_memory,
-        GBCState,
-    },
-    util::{
-        add_and_get_carries, index_bitmap, reset_bit, set_bit, subtract_and_get_borrows, Bytes,
-    },
+    gbc::{virtual_memory, GBCState},
+    util::{add_and_get_carries, index_bits, reset_bit, set_bit, subtract_and_get_borrows, Bytes, combine_high_low},
 };
 
 use super::register::{FlagRegister, Register, RegisterMapMethods, RegisterPair};
@@ -111,11 +106,11 @@ pub(super) fn op_PUSH_stack_from_regpair(state: &mut GBCState, src: RegisterPair
 
 // Pop value from stack to register pair
 pub(super) fn op_POP_stack_to_regpair(state: &mut GBCState, dest: RegisterPair) {
-    let val_low = virtual_memory::read(state, state.cpu.sp) as u16;
+    let val_low = virtual_memory::read(state, state.cpu.sp);
     state.cpu.sp += 1;
-    let val_high = (virtual_memory::read(state, state.cpu.sp) as u16) << 8;
+    let val_high = virtual_memory::read(state, state.cpu.sp);
     state.cpu.sp += 1;
-    let val = val_high | val_low;
+    let val = combine_high_low(val_high, val_low);
     state.cpu.registers.write_pair(dest, val);
 }
 
@@ -131,8 +126,8 @@ pub(super) fn op_ADD(state: &mut GBCState, val: u8) {
     state.cpu.registers.set_flags(&FlagRegister {
         z: sum == 0,
         n: false,
-        h: index_bitmap(carries, 3),
-        cy: index_bitmap(carries, 7),
+        h: index_bits(carries, 3),
+        cy: index_bits(carries, 7),
     });
 }
 
@@ -163,8 +158,8 @@ pub(super) fn op_SUB(state: &mut GBCState, val: u8) {
     state.cpu.registers.set_flags(&FlagRegister {
         z: diff == 0,
         n: true,
-        h: index_bitmap(borrows, 3),
-        cy: index_bitmap(borrows, 7),
+        h: index_bits(borrows, 3),
+        cy: index_bits(borrows, 7),
     });
 }
 
@@ -251,8 +246,8 @@ pub(super) fn op_CP(state: &mut GBCState, val: u8) {
     state.cpu.registers.set_flags(&FlagRegister {
         z: result == 0,
         n: true,
-        h: index_bitmap(borrows, 3),
-        cy: index_bitmap(borrows, 7),
+        h: index_bits(borrows, 3),
+        cy: index_bits(borrows, 7),
     });
 }
 
@@ -271,7 +266,7 @@ pub(super) fn op_INC_reg(state: &mut GBCState, reg: Register) {
     state.cpu.registers.set_flags(&FlagRegister {
         z: result == 0,
         n: false,
-        h: index_bitmap(carries, 3),
+        h: index_bits(carries, 3),
         cy: state.cpu.registers.get_flags().cy,
     });
 }
@@ -285,7 +280,7 @@ pub(super) fn op_DEC_reg(state: &mut GBCState, reg: Register) {
     state.cpu.registers.set_flags(&FlagRegister {
         z: result == 0,
         n: true,
-        h: index_bitmap(borrows, 3),
+        h: index_bits(borrows, 3),
         cy: state.cpu.registers.get_flags().cy,
     });
 }
@@ -302,8 +297,8 @@ pub(super) fn op_ADD_u16(state: &mut GBCState, rhs: u16) {
     state.cpu.registers.set_flags(&FlagRegister {
         z: state.cpu.registers.get_flags().z,
         n: false,
-        h: index_bitmap(carries, 11),
-        cy: index_bitmap(carries, 15),
+        h: index_bits(carries, 11),
+        cy: index_bits(carries, 15),
     });
 }
 
@@ -336,7 +331,7 @@ pub(super) fn op_RLC(state: &mut GBCState, val: u8) -> u8 {
         z: result == 0,
         n: false,
         h: false,
-        cy: index_bitmap(val, 7),
+        cy: index_bits(val, 7),
     });
     result
 }
@@ -355,7 +350,7 @@ pub(super) fn op_RL(state: &mut GBCState, val: u8) -> u8 {
         z: result == 0,
         n: false,
         h: false,
-        cy: index_bitmap(val, 7),
+        cy: index_bits(val, 7),
     });
     result
 }
@@ -373,7 +368,7 @@ pub(super) fn op_RRC(state: &mut GBCState, val: u8) -> u8 {
         z: result == 0,
         n: false,
         h: false,
-        cy: index_bitmap(val, 0),
+        cy: index_bits(val, 0),
     });
     result
 }
@@ -392,7 +387,7 @@ pub(super) fn op_RR(state: &mut GBCState, val: u8) -> u8 {
         z: result == 0,
         n: false,
         h: false,
-        cy: index_bitmap(val, 0),
+        cy: index_bits(val, 0),
     });
     result
 }
@@ -410,7 +405,7 @@ pub(super) fn op_SLA(state: &mut GBCState, val: u8) -> u8 {
         z: result == 0,
         n: false,
         h: false,
-        cy: index_bitmap(val, 7),
+        cy: index_bits(val, 7),
     });
     result
 }
@@ -428,7 +423,7 @@ pub(super) fn op_SRA(state: &mut GBCState, val: u8) -> u8 {
         z: result == 0,
         n: false,
         h: false,
-        cy: index_bitmap(val, 0),
+        cy: index_bits(val, 0),
     });
     result
 }
@@ -446,7 +441,7 @@ pub(super) fn op_SRL(state: &mut GBCState, val: u8) -> u8 {
         z: result == 0,
         n: false,
         h: false,
-        cy: index_bitmap(val, 0),
+        cy: index_bits(val, 0),
     });
     result
 }
@@ -479,7 +474,7 @@ pub(super) fn op_SWAP_reg(state: &mut GBCState, reg: Register) {
 // Writes to flag Z the complement of the contents of the specified bit
 fn op_BIT(state: &mut GBCState, bit: usize, val: u8) {
     state.cpu.registers.set_flags(&FlagRegister {
-        z: !index_bitmap(val, bit),
+        z: !index_bits(val, bit),
         n: false,
         h: true,
         cy: state.cpu.registers.get_flags().cy,
@@ -520,11 +515,11 @@ pub(super) fn op_RES_from_HLptr(state: &mut GBCState, bit: usize) {
 }
 
 pub(super) fn op_RET(state: &mut GBCState) {
-    let pc_low = virtual_memory::read(state, state.cpu.sp) as u16;
+    let pc_low = virtual_memory::read(state, state.cpu.sp);
     state.cpu.sp += 1;
-    let pc_high = virtual_memory::read(state, state.cpu.sp) as u16;
+    let pc_high = virtual_memory::read(state, state.cpu.sp);
     state.cpu.sp += 1;
-    state.cpu.pc = (pc_high << 8) | pc_low;
+    state.cpu.pc = combine_high_low(pc_high, pc_low);
 }
 
 pub(super) fn op_RST(state: &mut GBCState, new_pc: u16) {
