@@ -1,11 +1,12 @@
 #![allow(non_snake_case)]
 
 use crate::{
-    gbc::{virtual_memory, GBCState},
+    gbc::{interrupt_controller, virtual_memory, GBCState},
     util::{add_and_get_carries, add_i8_to_u16, index_bits, subtract_and_get_borrows, Bytes},
 };
 
 use super::{
+    call,
     instructions::map_CB_prefix_instruction,
     op_helpers::*,
     register::{FlagRegister, Register, RegisterMapMethods, RegisterPair},
@@ -713,8 +714,9 @@ pub(super) fn instr_0x75(state: &mut GBCState) {
     op_LD_regpairptr_from_reg(state, RegisterPair::HL, Register::L);
 }
 
-pub(super) fn instr_0x76(_state: &mut GBCState) {
-    todo!();
+// HALT
+pub(super) fn instr_0x76(state: &mut GBCState) {
+    state.cpu.halted = true;
 }
 
 // LD (HL), A
@@ -1127,11 +1129,7 @@ pub(super) fn instr_0xC3(state: &mut GBCState) {
 pub(super) fn instr_0xC4(state: &mut GBCState) {
     let new_pc = super::fetch_and_incr_pc_16(state);
     if !state.cpu.registers.get_flags().z {
-        state.cpu.sp -= 1;
-        virtual_memory::write(state, state.cpu.sp, state.cpu.pc.high());
-        state.cpu.sp -= 1;
-        virtual_memory::write(state, state.cpu.sp, state.cpu.pc.low());
-        state.cpu.pc = new_pc;
+        call(state, new_pc);
     }
 }
 
@@ -1182,22 +1180,14 @@ pub(super) fn instr_0xCB(state: &mut GBCState) {
 pub(super) fn instr_0xCC(state: &mut GBCState) {
     let new_pc = super::fetch_and_incr_pc_16(state);
     if state.cpu.registers.get_flags().z {
-        state.cpu.sp -= 1;
-        virtual_memory::write(state, state.cpu.sp, state.cpu.pc.high());
-        state.cpu.sp -= 1;
-        virtual_memory::write(state, state.cpu.sp, state.cpu.pc.low());
-        state.cpu.pc = new_pc;
+        call(state, new_pc);
     }
 }
 
 // CALL u16
 pub(super) fn instr_0xCD(state: &mut GBCState) {
     let new_pc = super::fetch_and_incr_pc_16(state);
-    state.cpu.sp -= 1;
-    virtual_memory::write(state, state.cpu.sp, state.cpu.pc.high());
-    state.cpu.sp -= 1;
-    virtual_memory::write(state, state.cpu.sp, state.cpu.pc.low());
-    state.cpu.pc = new_pc;
+    call(state, new_pc);
 }
 
 // ADC A, u8
@@ -1240,11 +1230,7 @@ pub(super) fn instr_0xD3(_state: &mut GBCState) {
 pub(super) fn instr_0xD4(state: &mut GBCState) {
     let new_pc = super::fetch_and_incr_pc_16(state);
     if !state.cpu.registers.get_flags().cy {
-        state.cpu.sp -= 1;
-        virtual_memory::write(state, state.cpu.sp, state.cpu.pc.high());
-        state.cpu.sp -= 1;
-        virtual_memory::write(state, state.cpu.sp, state.cpu.pc.low());
-        state.cpu.pc = new_pc;
+        call(state, new_pc);
     }
 }
 
@@ -1274,7 +1260,7 @@ pub(super) fn instr_0xD8(state: &mut GBCState) {
 // RETI
 pub(super) fn instr_0xD9(state: &mut GBCState) {
     op_RET(state);
-    state.intr_ctrl.enable_interrupts();
+    interrupt_controller::enable_interrupts(state);
 }
 
 // JP C, u16
@@ -1294,11 +1280,7 @@ pub(super) fn instr_0xDB(_state: &mut GBCState) {
 pub(super) fn instr_0xDC(state: &mut GBCState) {
     let new_pc = super::fetch_and_incr_pc_16(state);
     if state.cpu.registers.get_flags().cy {
-        state.cpu.sp -= 1;
-        virtual_memory::write(state, state.cpu.sp, state.cpu.pc.high());
-        state.cpu.sp -= 1;
-        virtual_memory::write(state, state.cpu.sp, state.cpu.pc.low());
-        state.cpu.pc = new_pc;
+        call(state, new_pc);
     }
 }
 
@@ -1427,7 +1409,7 @@ pub(super) fn instr_0xF2(state: &mut GBCState) {
 
 // DI
 pub(super) fn instr_0xF3(state: &mut GBCState) {
-    state.intr_ctrl.disable_interrupts();
+    interrupt_controller::disable_interrupts(state);
 }
 
 // Invalid Opcode
@@ -1477,7 +1459,7 @@ pub(super) fn instr_0xFA(state: &mut GBCState) {
 
 // EI
 pub(super) fn instr_0xFB(state: &mut GBCState) {
-    state.intr_ctrl.enable_interrupts();
+    interrupt_controller::enable_interrupts(state);
 }
 
 // Invalid Opcode

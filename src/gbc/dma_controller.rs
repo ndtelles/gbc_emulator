@@ -52,6 +52,9 @@ pub fn tick(state: &mut GBCState) {
     process_hblank_transfer(state);
 }
 
+/**
+ * Trigger oam transfer when register 0xFF46 is written to
+ */
 pub fn trigger_oam_transfer(state: &mut GBCState, val: u8) {
     if val >= 0xC0 {
         return; // Invalid start address
@@ -64,7 +67,7 @@ pub fn trigger_oam_transfer(state: &mut GBCState, val: u8) {
 }
 
 /**
- * Triggers either hblank or general purpose DMA transfer
+ * Trigger either hblank or general purpose DMA transfer when register 0xFF55 is written to
  */
 pub fn trigger_vram_transfer(state: &mut GBCState, val: u8) {
     // Hblank transfer cancelled
@@ -119,6 +122,7 @@ fn process_oam_transfer(state: &mut GBCState) {
  */
 fn process_hblank_transfer(state: &mut GBCState) {
     // ToDo Check hblank state
+    todo!();
 
     let next = state.dma_ctrl.hblank_transfer.iterator.next();
     if next.is_none() {
