@@ -22,3 +22,5 @@ impl Renderer {
         }
     }
 }
+
+pub fn tick(state: &mut GBCState) {}

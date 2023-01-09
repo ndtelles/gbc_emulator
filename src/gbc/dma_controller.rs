@@ -6,7 +6,7 @@ use std::{
 use crate::util::{combine_high_low, index_bits};
 
 use super::{
-    virtual_memory::{self, OAM_ADDR, VRAM_DMA_REG_ADDR},
+    virtual_memory::{self, OAM_ADDR, VRAM_DMA_REGISTER},
     GBCState,
 };
 
@@ -136,11 +136,11 @@ fn process_hblank_transfer(state: &mut GBCState) {
     match state.dma_ctrl.hblank_transfer.iterator.peek() {
         // Write back remaining transfer length (in 16 byte chunks) to DMA register
         Some(_) => {
-            let val = virtual_memory::read(state, VRAM_DMA_REG_ADDR);
-            virtual_memory::write_without_triggers(state, VRAM_DMA_REG_ADDR, val - 1);
+            let val = virtual_memory::read(state, VRAM_DMA_REGISTER);
+            virtual_memory::write_without_triggers(state, VRAM_DMA_REGISTER, val - 1);
         }
         // Write back to DMA register that transfer has finished
-        None => virtual_memory::write_without_triggers(state, VRAM_DMA_REG_ADDR, 0x00FF),
+        None => virtual_memory::write_without_triggers(state, VRAM_DMA_REGISTER, 0x00FF),
     }
 }
 

@@ -2,8 +2,8 @@ mod cpu;
 mod delay_action;
 mod dma_controller;
 mod interrupt_controller;
-mod virtual_memory;
 mod render_engine;
+mod virtual_memory;
 
 use crate::gbc::cpu::CPU;
 use crate::gbc::virtual_memory::VirtualMemory;
@@ -17,17 +17,18 @@ pub struct GBC {
 }
 
 impl GBC {
-    pub fn new() -> Self {
+    pub fn new(rom_data: Vec<u8>) -> Self {
         Self {
-            state: GBCState::new(),
+            state: GBCState::new(rom_data),
         }
     }
 
     pub fn run(&mut self) {
         loop {
+            render_engine::tick(&mut self.state);
             delay_action::tick(&mut self.state);
             dma_controller::tick(&mut self.state);
-            cpu::execute(&mut self.state);
+            cpu::tick(&mut self.state);
         }
     }
 }
@@ -42,10 +43,10 @@ pub struct GBCState {
 }
 
 impl GBCState {
-    pub fn new() -> Self {
+    pub fn new(rom_data: Vec<u8>) -> Self {
         Self {
             cpu: CPU::new(),
-            mem: VirtualMemory::new(),
+            mem: VirtualMemory::new(rom_data),
             intr_ctrl: InterruptController::new(),
             dma_ctrl: DMAController::new(),
             delayed_actions: DelayedActions::new(),

@@ -78,10 +78,10 @@ fn handle_interrupt(state: &mut GBCState, intr: InterruptFlag) {
     interrupt_controller::reset_interrupt_request_flag(state, intr);
     interrupt_controller::disable_interrupts(state);
     call(state, intr.handler_address());
-    consume_cycles(state, 5);
+    consume_cycles(state, 4);
 }
 
-pub fn execute(state: &mut GBCState) {
+pub fn tick(state: &mut GBCState) {
     if state.cpu.busy_cycles > 0 {
         // CPU has been marked as already busy this cycle
         state.cpu.busy_cycles -= 1;

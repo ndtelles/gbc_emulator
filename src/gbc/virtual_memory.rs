@@ -4,7 +4,10 @@ use enum_map::{enum_map, Enum, EnumMap};
 
 use super::{dma_controller, GBCState};
 
-// Memory areas boundaries in contigous order. Would use ranges but const ranges can't be used in rust for pattern matching :(
+/**
+ * Memory areas boundaries in contigous order. Would use ranges but
+ * const ranges can't be used in rust for pattern matching :(
+ */
 const PRG_ROM_FIXED_ADDR: u16 = 0x0000;
 const PRG_ROM_FIXED_ADDR_END: u16 = 0x3FFF;
 
@@ -35,12 +38,21 @@ const HIGH_RAM_ADDR_END: u16 = 0xFFFE;
 const IE_REGISTER_ADDR: u16 = 0xFFFF;
 
 /**
- * Special registers
+ * Registers that trigger behaviors when written to
  */
 const WORK_RAM_BANK_REGISTER: u16 = 0xFF70;
 const VRAM_BANK_REGISTER: u16 = 0xFF4F;
-const OAM_DMA_REG_ADDR: u16 = 0xFF46;
-pub const VRAM_DMA_REG_ADDR: u16 = 0xFF55;
+const OAM_DMA_REGISTER: u16 = 0xFF46;
+pub const VRAM_DMA_REGISTER: u16 = 0xFF55;
+const RAM_ENABLE_REGISTER: u16 = 0x0000;
+const RAM_ENABLE_REGISTER_END: u16 = 0x1FFF;
+const ROM_BANK_REGISTER: u16 = 0x2000;
+const ROM_BANK_REGISTER_END: u16 = 0x3FFF;
+
+/**
+ * ROM Data Addresses
+ */
+const ROM_SIZE_ADDR: u16 = 0x0148;
 
 #[derive(Enum)]
 enum MemoryAreaName {
@@ -111,30 +123,35 @@ impl MemoryArea {
     }
 
     // Return cow which lets us return either a borrowed or owned value
-    pub fn read_len(&self, addr: u16, length: usize) -> Cow<[u8]> {
+    pub fn read_bytes(&self, addr: u16, length_bytes: usize) -> Cow<[u8]> {
         if let MemoryPermission::None = self.permission {
-            return Cow::from(vec![0xFF; length]);
+            return Cow::from(vec![0xFF; length_bytes]);
         }
         let idx = self.virtual_address_to_data_index(addr);
-        let end_idx = idx + length;
+        let end_idx = idx + length_bytes;
         Cow::from(&self.data[idx..end_idx])
     }
 
     pub fn write(&mut self, addr: u16, val: u8) {
-        if let MemoryPermission::ReadOnly = self.permission {
+        if let MemoryPermission::ReadOnly | MemoryPermission::None = self.permission {
             return;
         }
         let idx = self.virtual_address_to_data_index(addr);
         self.data[idx] = val;
     }
 
-    pub fn write_len(&mut self, addr: u16, vals: &[u8]) {
-        if let MemoryPermission::ReadOnly = self.permission {
+    pub fn write_bytes(&mut self, addr: u16, vals: &[u8]) {
+        if let MemoryPermission::ReadOnly | MemoryPermission::None = self.permission {
             return;
         }
         let idx = self.virtual_address_to_data_index(addr);
         let end_idx = idx + vals.len();
         self.data.splice(idx..end_idx, vals.iter().cloned());
+    }
+
+    pub fn fill_from_src(&mut self, src: &[u8]) {
+        assert!(self.data.len() == src.len());
+        self.data = src.to_vec();
     }
 }
 
@@ -143,8 +160,12 @@ pub struct VirtualMemory {
 }
 
 impl VirtualMemory {
-    pub fn new() -> Self {
-        Self {
+    pub fn new(rom_data: Vec<u8>) -> Self {
+        let rom_size_indicator = rom_data[ROM_SIZE_ADDR as usize];
+        assert!(rom_size_indicator <= 0x08);
+        let num_rom_banks = (0x2 << rom_size_indicator) - 1;
+
+        let mut vm = Self {
             areas: enum_map! {
                 MemoryAreaName::PrgRomFixed => MemoryArea::new(
                     PRG_ROM_FIXED_ADDR,
@@ -152,16 +173,15 @@ impl VirtualMemory {
                     1,
                     MemoryPermission::ReadOnly,
                 ),
-                // @TODO: Imlement banking for Prg ROM
                 MemoryAreaName::PrgRomBanked => MemoryArea::new(
                     PRG_ROM_BANKED_ADDR,
                     PRG_ROM_BANKED_ADDR_END,
-                    1,
+                    num_rom_banks,
                     MemoryPermission::ReadOnly,
                 ),
                 MemoryAreaName::Vram => MemoryArea::new(VRAM_ADDR, VRAM_ADDR_END, 2, MemoryPermission::ReadAndWrite),
                 // @TODO: Build out external ram
-                MemoryAreaName::ExternalRam => MemoryArea::new(EXTERNAL_RAM_ADDR, EXTERNAL_RAM_ADDR_END, 1, MemoryPermission::ReadAndWrite),
+                MemoryAreaName::ExternalRam => MemoryArea::new(EXTERNAL_RAM_ADDR, EXTERNAL_RAM_ADDR_END, 1, MemoryPermission::None),
                 MemoryAreaName::WorkRamFixed =>MemoryArea::new(
                     WORK_RAM_FIXED_ADDR,
                     WORK_RAM_FIXED_ADDR_END,
@@ -199,7 +219,11 @@ impl VirtualMemory {
                     MemoryPermission::ReadAndWrite,
                 ),
             },
-        }
+        };
+        let (fixed_rom_data, banked_rom_data) = rom_data.split_at(PRG_ROM_BANKED_ADDR.into());
+        vm.areas[MemoryAreaName::PrgRomFixed].fill_from_src(fixed_rom_data);
+        vm.areas[MemoryAreaName::PrgRomBanked].fill_from_src(banked_rom_data);
+        vm
     }
 }
 
@@ -225,6 +249,16 @@ fn map_memory(addr: u16) -> MemoryAreaName {
  */
 fn handle_write_triggered_events(state: &mut GBCState, addr: u16, val: u8) {
     match addr {
+        RAM_ENABLE_REGISTER..=RAM_ENABLE_REGISTER_END => match val & 0x0F == 0x0A {
+            false => {
+                state.mem.areas[MemoryAreaName::ExternalRam].permission = MemoryPermission::None
+            }
+            true => {
+                state.mem.areas[MemoryAreaName::ExternalRam].permission =
+                    MemoryPermission::ReadAndWrite
+            }
+        },
+        ROM_BANK_REGISTER..=ROM_BANK_REGISTER_END => todo!(),
         WORK_RAM_BANK_REGISTER => {
             // First 3 bits hold the flags. Both 0 and 1 mean the first bank
             let new_bank = (val & 0x07).saturating_sub(1).into();
@@ -234,8 +268,8 @@ fn handle_write_triggered_events(state: &mut GBCState, addr: u16, val: u8) {
             let new_bank = (val & 0x01).into();
             state.mem.areas[MemoryAreaName::Vram].active_bank = new_bank;
         }
-        OAM_DMA_REG_ADDR => dma_controller::trigger_oam_transfer(state, val),
-        VRAM_DMA_REG_ADDR => dma_controller::trigger_vram_transfer(state, val),
+        OAM_DMA_REGISTER => dma_controller::trigger_oam_transfer(state, val),
+        VRAM_DMA_REGISTER => dma_controller::trigger_vram_transfer(state, val),
         _ => {}
     };
 }
@@ -252,7 +286,7 @@ pub fn read_bytes(state: &GBCState, addr: u16, length_bytes: usize) -> Cow<[u8]>
     let area_read_len = (area.end_addr - addr + 1).into();
     let bytes_to_read = min(area_read_len, length_bytes);
 
-    let mut result = area.read_len(addr, bytes_to_read);
+    let mut result = area.read_bytes(addr, bytes_to_read);
 
     // We may have to read across multiple memory areas
     if length_bytes > bytes_to_read {
@@ -282,7 +316,7 @@ pub fn write_bytes(state: &mut GBCState, addr: u16, vals: &[u8]) {
     let area_write_len = (area.end_addr - addr + 1).into();
     let bytes_to_write = min(area_write_len, vals.len());
     let (vals, rest) = vals.split_at(bytes_to_write);
-    area.write_len(addr, vals);
+    area.write_bytes(addr, vals);
 
     // We may have to write across multiple memory areas
     if !rest.is_empty() {
