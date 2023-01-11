@@ -1,9 +1,11 @@
+use std::cmp::max;
+
 use enum_map::EnumMap;
 use int_enum::IntEnum;
 
 use crate::util::combine_high_low;
 
-use super::memory_area::{MemoryArea, MemoryAreaName, MemoryPermission};
+use super::{memory_area::{MemoryArea, MemoryAreaName, MemoryPermission}, EXT_RAM_SIZE_ADDR, ROM_SIZE_ADDR};
 
 const CARTRIDGE_TYPE_ADDR: u16 = 0x0147;
 
@@ -21,10 +23,6 @@ pub trait MBC {
         addr: u16,
         val: u8,
     );
-
-    fn fixed_bank_is_selected(&self) -> bool {
-        false
-    }
 }
 
 struct NoMBC {}
@@ -80,13 +78,16 @@ impl MBC for MBC1 {
 
         let (rom_bank, ram_bank) = match self.bank_mode {
             BankSelectMode::UpperROM => {
-                let rom_bank = ((self.ram_or_upper_rom_bank_select << 5) | self.rom_bank_select)
-                    // Subtract 1 since we don't include bank 0 in the MemoryArea
-                    .saturating_sub(1);
+                // MBC1 can not select ROM bank 0
+                let rom_bank = max(
+                    (self.ram_or_upper_rom_bank_select << 5) | self.rom_bank_select,
+                    1,
+                );
                 (rom_bank, 0)
             }
             BankSelectMode::RAM => (
-                self.rom_bank_select.saturating_sub(1),
+                // MBC1 can not select ROM bank 0
+                max(self.rom_bank_select, 1),
                 self.ram_or_upper_rom_bank_select,
             ),
         };
@@ -131,18 +132,10 @@ impl MBC for MBC5 {
             0x4000..=0x5FFF => self.ram_bank_select = val & 0x0F,
             _ => {}
         }
-        let rom_bank = combine_high_low(self.rom_bank_select_high, self.rom_bank_select_low)
-            // Subtract 1 since we don't include bank 0 in the MemoryArea
-            .saturating_sub(1)
-            .into();
+        let rom_bank = combine_high_low(self.rom_bank_select_high, self.rom_bank_select_low).into();
 
         mem_areas[MemoryAreaName::PrgRomFixed].set_active_bank(rom_bank);
         mem_areas[MemoryAreaName::ExternalRam].set_active_bank(self.ram_bank_select.into());
-    }
-
-    // Special case for MBC5, since MBC5 can also address the fixed ROM bank with the upper addresses
-    fn fixed_bank_is_selected(&self) -> bool {
-        combine_high_low(self.rom_bank_select_high, self.rom_bank_select_low) == 0
     }
 }
 
@@ -154,4 +147,22 @@ pub(super) fn build_mbc(rom_data: &Vec<u8>) -> Box<dyn MBC> {
         0x19..=0x1E => Box::new(MBC5::new()),
         _ => unimplemented!(),
     }
+}
+
+pub(super) fn get_num_ext_ram_banks(rom_data: &Vec<u8>) -> usize {
+    let code = rom_data[EXT_RAM_SIZE_ADDR as usize];
+    match code {
+        0x00 => 0,
+        0x02 => 1,
+        0x03 => 4,
+        0x04 => 16,
+        0x05 => 8,
+        _ => panic!(),
+    }
+}
+
+pub(super) fn get_num_rom_banks(rom_data: &Vec<u8>) -> usize {
+    let code = rom_data[ROM_SIZE_ADDR as usize];
+    assert!(code <= 0x08);
+    0x2 << code
 }

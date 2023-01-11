@@ -35,7 +35,6 @@ pub struct MemoryArea {
     num_banks: usize,
     active_bank: usize,
     permission: MemoryPermission,
-    is_rom_fixed_bank: bool,
     data: Vec<u8>,
 }
 
@@ -55,23 +54,13 @@ impl MemoryArea {
             num_banks,
             active_bank: 0,
             permission,
-            is_rom_fixed_bank: false,
             data: vec![0x00; bank_size * num_banks],
         }
     }
 
     // Convert the u16 virtual address to an index in the data vec
     fn translate_virtual_address_to_data_index(&self, addr: u16) -> usize {
-        if self.is_rom_fixed_bank && addr > self.end_addr {
-            // MBC controller is using fixed ROM bank from an upper bank address.
-            // Translate address to index with banked rom address
-            return (addr - PRG_ROM_BANKED_ADDR).into();
-        }
         (addr - self.start_addr) as usize + (self.bank_size * self.active_bank)
-    }
-
-    pub(super) fn set_as_fixed_rom_bank(&mut self) {
-        self.is_rom_fixed_bank = true;
     }
 
     pub(super) fn get_end_addr(&self) -> u16 {

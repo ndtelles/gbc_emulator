@@ -5,9 +5,12 @@ use std::{borrow::Cow, cmp::min};
 
 use enum_map::{enum_map, EnumMap};
 
-use crate::gbc::virtual_memory::memory_area::{MemoryArea, MemoryPermission};
+use crate::gbc::virtual_memory::memory_area::MemoryPermission;
 
-use self::{memory_area::MemoryAreaName, memory_bank_controller::MBC};
+use self::{
+    memory_area::{MemoryArea, MemoryAreaName},
+    memory_bank_controller::{get_num_ext_ram_banks, get_num_rom_banks, MBC},
+};
 
 use super::{dma_controller, GBCState};
 
@@ -65,10 +68,8 @@ pub struct VirtualMemory {
 
 impl VirtualMemory {
     pub fn new(rom_data: Vec<u8>) -> Self {
-        let rom_size_indicator = rom_data[ROM_SIZE_ADDR as usize];
-        assert!(rom_size_indicator <= 0x08);
-        let num_rom_banks = (0x2 << rom_size_indicator) - 1;
-        let num_ext_ram_banks = Self::get_num_ext_ram_banks(&rom_data);
+        let num_rom_banks = get_num_rom_banks(&rom_data);
+        let num_ext_ram_banks = get_num_ext_ram_banks(&rom_data);
         let mbc = memory_bank_controller::build_mbc(&rom_data);
 
         let mut vm = Self {
@@ -80,6 +81,8 @@ impl VirtualMemory {
                     1,
                     MemoryPermission::ReadOnly,
                 ),
+                // Banked ROM. Bank 0 includes a duplicate of the fixed ROM data so that the
+                // ROM data 0x0000..=0x3FFF can be selected by MBC5 banking at this address
                 MemoryAreaName::PrgRomBanked => MemoryArea::new(
                     PRG_ROM_BANKED_ADDR,
                     PRG_ROM_BANKED_ADDR_END,
@@ -126,46 +129,29 @@ impl VirtualMemory {
                 ),
             },
         };
-        let (fixed_rom_data, banked_rom_data) = rom_data.split_at(PRG_ROM_BANKED_ADDR.into());
-        vm.areas[MemoryAreaName::PrgRomFixed].set_as_fixed_rom_bank();
-        vm.areas[MemoryAreaName::PrgRomFixed].fill_from_src(fixed_rom_data);
-        vm.areas[MemoryAreaName::PrgRomBanked].fill_from_src(banked_rom_data);
+        // Bank 0 contains a duplicate of the fixed bank for MBC5. Default to bank 1
+        vm.areas[MemoryAreaName::PrgRomBanked].set_active_bank(1);
+        vm.areas[MemoryAreaName::PrgRomFixed]
+            .fill_from_src(&rom_data[..=PRG_ROM_FIXED_ADDR_END.into()]);
+        vm.areas[MemoryAreaName::PrgRomBanked].fill_from_src(&rom_data);
         vm
     }
+}
 
-    fn get_num_ext_ram_banks(rom_data: &Vec<u8>) -> usize {
-        let code = rom_data[EXT_RAM_SIZE_ADDR as usize];
-        match code {
-            0x00 => 0,
-            0x02 => 1,
-            0x03 => 4,
-            0x04 => 16,
-            0x05 => 8,
-            _ => panic!(),
-        }
-    }
-
-    fn map_memory(&self, addr: u16) -> MemoryAreaName {
-        match addr {
-            PRG_ROM_FIXED_ADDR..=PRG_ROM_FIXED_ADDR_END => MemoryAreaName::PrgRomFixed,
-            PRG_ROM_BANKED_ADDR..=PRG_ROM_BANKED_ADDR_END => {
-                match self.mbc.fixed_bank_is_selected() {
-                    false => MemoryAreaName::PrgRomBanked,
-                    // Special case for MBC5
-                    true => MemoryAreaName::PrgRomFixed
-                }
-            },
-            VRAM_ADDR..=VRAM_ADDR_END => MemoryAreaName::Vram,
-            EXTERNAL_RAM_ADDR..=EXTERNAL_RAM_ADDR_END => MemoryAreaName::ExternalRam,
-            WORK_RAM_FIXED_ADDR..=WORK_RAM_FIXED_ADDR_END => MemoryAreaName::WorkRamFixed,
-            WORK_RAM_BANKED_ADDR..=WORK_RAM_BANKED_ADDR_END => MemoryAreaName::WorkRamBanked,
-            OAM_ADDR..=OAM_ADDR_END => MemoryAreaName::Oam,
-            IO_REGISTERS_ADDR..=IO_REGISTERS_ADDR_END => MemoryAreaName::IORegisters,
-            HIGH_RAM_ADDR..=HIGH_RAM_ADDR_END => MemoryAreaName::HighRam,
-            IE_REGISTER_ADDR => MemoryAreaName::IERegister,
-            // Invalid address areas
-            0xE000..=0xFDFF | 0xFEA0..=0xFEFF => unimplemented!(),
-        }
+fn map_memory(addr: u16) -> MemoryAreaName {
+    match addr {
+        PRG_ROM_FIXED_ADDR..=PRG_ROM_FIXED_ADDR_END => MemoryAreaName::PrgRomFixed,
+        PRG_ROM_BANKED_ADDR..=PRG_ROM_BANKED_ADDR_END => MemoryAreaName::PrgRomBanked,
+        VRAM_ADDR..=VRAM_ADDR_END => MemoryAreaName::Vram,
+        EXTERNAL_RAM_ADDR..=EXTERNAL_RAM_ADDR_END => MemoryAreaName::ExternalRam,
+        WORK_RAM_FIXED_ADDR..=WORK_RAM_FIXED_ADDR_END => MemoryAreaName::WorkRamFixed,
+        WORK_RAM_BANKED_ADDR..=WORK_RAM_BANKED_ADDR_END => MemoryAreaName::WorkRamBanked,
+        OAM_ADDR..=OAM_ADDR_END => MemoryAreaName::Oam,
+        IO_REGISTERS_ADDR..=IO_REGISTERS_ADDR_END => MemoryAreaName::IORegisters,
+        HIGH_RAM_ADDR..=HIGH_RAM_ADDR_END => MemoryAreaName::HighRam,
+        IE_REGISTER_ADDR => MemoryAreaName::IERegister,
+        // Invalid address areas
+        0xE000..=0xFDFF | 0xFEA0..=0xFEFF => unimplemented!(),
     }
 }
 
@@ -199,12 +185,12 @@ fn handle_write_triggered_events(state: &mut GBCState, addr: u16, val: u8) {
 }
 
 pub fn read(state: &GBCState, addr: u16) -> u8 {
-    let area = state.mem.map_memory(addr);
+    let area = map_memory(addr);
     state.mem.areas[area].read(addr)
 }
 
 pub fn read_bytes(state: &GBCState, addr: u16, length_bytes: usize) -> Cow<[u8]> {
-    let area = &state.mem.areas[state.mem.map_memory(addr)];
+    let area = &state.mem.areas[map_memory(addr)];
 
     // How many bytes can we actually read from this memory area
     let area_read_len = (area.get_end_addr() - addr + 1).into();
@@ -230,12 +216,12 @@ pub fn write(state: &mut GBCState, addr: u16, val: u8) {
 }
 
 pub fn write_without_triggers(state: &mut GBCState, addr: u16, val: u8) {
-    let area = state.mem.map_memory(addr);
+    let area = map_memory(addr);
     state.mem.areas[area].write(addr, val);
 }
 
 pub fn write_bytes(state: &mut GBCState, addr: u16, vals: &[u8]) {
-    let area_name = state.mem.map_memory(addr);
+    let area_name = map_memory(addr);
     let area = &mut state.mem.areas[area_name];
     // How many bytes can we actually write to this memory area
     let area_write_len = (area.get_end_addr() - addr + 1).into();
