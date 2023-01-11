@@ -127,6 +127,7 @@ impl VirtualMemory {
             },
         };
         let (fixed_rom_data, banked_rom_data) = rom_data.split_at(PRG_ROM_BANKED_ADDR.into());
+        vm.areas[MemoryAreaName::PrgRomFixed].set_as_fixed_rom_bank();
         vm.areas[MemoryAreaName::PrgRomFixed].fill_from_src(fixed_rom_data);
         vm.areas[MemoryAreaName::PrgRomBanked].fill_from_src(banked_rom_data);
         vm
@@ -143,22 +144,28 @@ impl VirtualMemory {
             _ => panic!(),
         }
     }
-}
 
-fn map_memory(addr: u16) -> MemoryAreaName {
-    match addr {
-        PRG_ROM_FIXED_ADDR..=PRG_ROM_FIXED_ADDR_END => MemoryAreaName::PrgRomFixed,
-        PRG_ROM_BANKED_ADDR..=PRG_ROM_BANKED_ADDR_END => MemoryAreaName::PrgRomBanked,
-        VRAM_ADDR..=VRAM_ADDR_END => MemoryAreaName::Vram,
-        EXTERNAL_RAM_ADDR..=EXTERNAL_RAM_ADDR_END => MemoryAreaName::ExternalRam,
-        WORK_RAM_FIXED_ADDR..=WORK_RAM_FIXED_ADDR_END => MemoryAreaName::WorkRamFixed,
-        WORK_RAM_BANKED_ADDR..=WORK_RAM_BANKED_ADDR_END => MemoryAreaName::WorkRamBanked,
-        OAM_ADDR..=OAM_ADDR_END => MemoryAreaName::Oam,
-        IO_REGISTERS_ADDR..=IO_REGISTERS_ADDR_END => MemoryAreaName::IORegisters,
-        HIGH_RAM_ADDR..=HIGH_RAM_ADDR_END => MemoryAreaName::HighRam,
-        IE_REGISTER_ADDR => MemoryAreaName::IERegister,
-        // Invalid address areas
-        0xE000..=0xFDFF | 0xFEA0..=0xFEFF => unimplemented!(),
+    fn map_memory(&self, addr: u16) -> MemoryAreaName {
+        match addr {
+            PRG_ROM_FIXED_ADDR..=PRG_ROM_FIXED_ADDR_END => MemoryAreaName::PrgRomFixed,
+            PRG_ROM_BANKED_ADDR..=PRG_ROM_BANKED_ADDR_END => {
+                match self.mbc.fixed_bank_is_selected() {
+                    false => MemoryAreaName::PrgRomBanked,
+                    // Special case for MBC5
+                    true => MemoryAreaName::PrgRomFixed
+                }
+            },
+            VRAM_ADDR..=VRAM_ADDR_END => MemoryAreaName::Vram,
+            EXTERNAL_RAM_ADDR..=EXTERNAL_RAM_ADDR_END => MemoryAreaName::ExternalRam,
+            WORK_RAM_FIXED_ADDR..=WORK_RAM_FIXED_ADDR_END => MemoryAreaName::WorkRamFixed,
+            WORK_RAM_BANKED_ADDR..=WORK_RAM_BANKED_ADDR_END => MemoryAreaName::WorkRamBanked,
+            OAM_ADDR..=OAM_ADDR_END => MemoryAreaName::Oam,
+            IO_REGISTERS_ADDR..=IO_REGISTERS_ADDR_END => MemoryAreaName::IORegisters,
+            HIGH_RAM_ADDR..=HIGH_RAM_ADDR_END => MemoryAreaName::HighRam,
+            IE_REGISTER_ADDR => MemoryAreaName::IERegister,
+            // Invalid address areas
+            0xE000..=0xFDFF | 0xFEA0..=0xFEFF => unimplemented!(),
+        }
     }
 }
 
@@ -192,12 +199,12 @@ fn handle_write_triggered_events(state: &mut GBCState, addr: u16, val: u8) {
 }
 
 pub fn read(state: &GBCState, addr: u16) -> u8 {
-    let area = map_memory(addr);
+    let area = state.mem.map_memory(addr);
     state.mem.areas[area].read(addr)
 }
 
 pub fn read_bytes(state: &GBCState, addr: u16, length_bytes: usize) -> Cow<[u8]> {
-    let area = &state.mem.areas[map_memory(addr)];
+    let area = &state.mem.areas[state.mem.map_memory(addr)];
 
     // How many bytes can we actually read from this memory area
     let area_read_len = (area.get_end_addr() - addr + 1).into();
@@ -223,12 +230,13 @@ pub fn write(state: &mut GBCState, addr: u16, val: u8) {
 }
 
 pub fn write_without_triggers(state: &mut GBCState, addr: u16, val: u8) {
-    let area = map_memory(addr);
+    let area = state.mem.map_memory(addr);
     state.mem.areas[area].write(addr, val);
 }
 
 pub fn write_bytes(state: &mut GBCState, addr: u16, vals: &[u8]) {
-    let area = &mut state.mem.areas[map_memory(addr)];
+    let area_name = state.mem.map_memory(addr);
+    let area = &mut state.mem.areas[area_name];
     // How many bytes can we actually write to this memory area
     let area_write_len = (area.get_end_addr() - addr + 1).into();
     let bytes_to_write = min(area_write_len, vals.len());

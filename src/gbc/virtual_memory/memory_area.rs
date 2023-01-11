@@ -2,6 +2,8 @@ use std::borrow::Cow;
 
 use enum_map::Enum;
 
+use super::PRG_ROM_BANKED_ADDR;
+
 #[derive(Enum)]
 pub enum MemoryAreaName {
     PrgRomFixed,
@@ -33,6 +35,7 @@ pub struct MemoryArea {
     num_banks: usize,
     active_bank: usize,
     permission: MemoryPermission,
+    is_rom_fixed_bank: bool,
     data: Vec<u8>,
 }
 
@@ -52,13 +55,23 @@ impl MemoryArea {
             num_banks,
             active_bank: 0,
             permission,
+            is_rom_fixed_bank: false,
             data: vec![0x00; bank_size * num_banks],
         }
     }
 
     // Convert the u16 virtual address to an index in the data vec
-    fn virtual_address_to_data_index(&self, addr: u16) -> usize {
+    fn translate_virtual_address_to_data_index(&self, addr: u16) -> usize {
+        if self.is_rom_fixed_bank && addr > self.end_addr {
+            // MBC controller is using fixed ROM bank from an upper bank address.
+            // Translate address to index with banked rom address
+            return (addr - PRG_ROM_BANKED_ADDR).into();
+        }
         (addr - self.start_addr) as usize + (self.bank_size * self.active_bank)
+    }
+
+    pub(super) fn set_as_fixed_rom_bank(&mut self) {
+        self.is_rom_fixed_bank = true;
     }
 
     pub(super) fn get_end_addr(&self) -> u16 {
@@ -78,7 +91,7 @@ impl MemoryArea {
         if let MemoryPermission::None = self.permission {
             return 0xFF;
         }
-        let idx = self.virtual_address_to_data_index(addr);
+        let idx = self.translate_virtual_address_to_data_index(addr);
         self.data[idx]
     }
 
@@ -87,7 +100,7 @@ impl MemoryArea {
         if let MemoryPermission::None = self.permission {
             return Cow::from(vec![0xFF; length_bytes]);
         }
-        let idx = self.virtual_address_to_data_index(addr);
+        let idx = self.translate_virtual_address_to_data_index(addr);
         let end_idx = idx + length_bytes;
         Cow::from(&self.data[idx..end_idx])
     }
@@ -96,7 +109,7 @@ impl MemoryArea {
         if let MemoryPermission::ReadOnly | MemoryPermission::None = self.permission {
             return;
         }
-        let idx = self.virtual_address_to_data_index(addr);
+        let idx = self.translate_virtual_address_to_data_index(addr);
         self.data[idx] = val;
     }
 
@@ -104,7 +117,7 @@ impl MemoryArea {
         if let MemoryPermission::ReadOnly | MemoryPermission::None = self.permission {
             return;
         }
-        let idx = self.virtual_address_to_data_index(addr);
+        let idx = self.translate_virtual_address_to_data_index(addr);
         let end_idx = idx + vals.len();
         self.data.splice(idx..end_idx, vals.iter().cloned());
     }
