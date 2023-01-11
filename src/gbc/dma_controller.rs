@@ -49,7 +49,6 @@ impl DMAController {
 
 pub fn tick(state: &mut GBCState) {
     process_oam_transfer(state);
-    process_hblank_transfer(state);
 }
 
 /**
@@ -121,9 +120,6 @@ fn process_oam_transfer(state: &mut GBCState) {
  * Write 16 bytes per hblank
  */
 fn process_hblank_transfer(state: &mut GBCState) {
-    // ToDo Check hblank state
-    todo!();
-
     let next = state.dma_ctrl.hblank_transfer.iterator.next();
     if next.is_none() {
         return;
