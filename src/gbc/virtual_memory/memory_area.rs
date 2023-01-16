@@ -2,8 +2,6 @@ use std::borrow::Cow;
 
 use enum_map::Enum;
 
-use super::PRG_ROM_BANKED_ADDR;
-
 #[derive(Enum)]
 pub enum MemoryAreaName {
     PrgRomFixed,

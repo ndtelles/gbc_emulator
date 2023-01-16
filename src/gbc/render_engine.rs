@@ -1,17 +1,19 @@
+mod pixel_fetcher;
+
 use std::collections::VecDeque;
 
-use super::GBCState;
+use self::pixel_fetcher::{Pixel, PixelFetcher};
 
-struct Pixel {
-    color_idx: u8,
-    palette: u8,
-    sprite_priority: u8,
-    background_priority: bool,
-}
+use super::{
+    lcd_controller::{self, PPUMode},
+    GBCState,
+};
 
-struct Renderer {
+pub struct Renderer {
     bg_fifo: VecDeque<Pixel>,
     obj_fifo: VecDeque<Pixel>,
+    obj_slots: [u8; 10],
+    pixel_fetcher: PixelFetcher,
 }
 
 impl Renderer {
@@ -19,8 +21,21 @@ impl Renderer {
         Self {
             bg_fifo: VecDeque::with_capacity(8),
             obj_fifo: VecDeque::with_capacity(8),
+            obj_slots: [0; 10],
+            pixel_fetcher: PixelFetcher::new(),
         }
     }
 }
 
-pub fn tick(state: &mut GBCState) {}
+pub fn tick(state: &mut GBCState) {
+    let status_reg = lcd_controller::get_lcd_status_register(state);
+    let ctrl_reg = lcd_controller::get_lcd_control_register(state);
+    pixel_fetcher::tick(state, &ctrl_reg);
+    match status_reg.ppu_mode {
+        PPUMode::OAMScan => {}
+        PPUMode::Drawing => {}
+        PPUMode::HBlank | PPUMode::VBlank => {
+            // Do Nothing
+        }
+    }
+}

@@ -51,7 +51,7 @@ const IE_REGISTER_ADDR: u16 = 0xFFFF;
  * Registers that trigger behaviors when written to
  */
 const WORK_RAM_BANK_REGISTER: u16 = 0xFF70;
-const VRAM_BANK_REGISTER: u16 = 0xFF4F;
+pub const VRAM_BANK_REGISTER: u16 = 0xFF4F;
 const OAM_DMA_REGISTER: u16 = 0xFF46;
 pub const VRAM_DMA_REGISTER: u16 = 0xFF55;
 
