@@ -11,6 +11,7 @@ pub enum MemoryAreaName {
     WorkRamFixed,
     WorkRamBanked,
     Oam,
+    BGPalette,
     IORegisters,
     HighRam,
     IERegister,
@@ -65,6 +66,10 @@ impl MemoryArea {
         self.end_addr
     }
 
+    pub(super) fn get_active_bank(&self) -> usize {
+        self.active_bank
+    }
+
     pub(super) fn set_active_bank(&mut self, active_bank: usize) {
         assert!(active_bank < self.num_banks);
         self.active_bank = active_bank;
@@ -111,5 +116,9 @@ impl MemoryArea {
 
     pub(super) fn fill_from_src(&mut self, src: &[u8]) {
         self.data.copy_from_slice(src);
+    }
+
+    pub(super) fn borrow_raw_data(&self) -> &[u8] {
+        &self.data
     }
 }

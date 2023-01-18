@@ -1,3 +1,5 @@
+use std::collections::VecDeque;
+
 use int_enum::IntEnum;
 
 use crate::{
@@ -7,6 +9,8 @@ use crate::{
     },
     util::index_bits,
 };
+
+use super::GBC_RESOLUTION_X;
 
 const TILE_MAP_0_ADDR: u16 = 0x9800;
 const TILE_MAP_1_ADDR: u16 = 0x9C00;
@@ -31,6 +35,7 @@ enum PixelFetcherState {
     PixelsReady {
         pixels: [Pixel; 8],
     },
+    FinishedScanline,
 }
 impl PixelFetcherState {
     pub fn initial_state() -> PixelFetcherState {
@@ -43,31 +48,38 @@ struct TileAttributes {
     vertical_flip: bool,
     horizontal_flip: bool,
     vram_bank: VRAMBank,
+    palette: u8,
 }
 impl From<u8> for TileAttributes {
     fn from(val: u8) -> Self {
         Self {
+            // TODO BG-to-OAM priority bit 7
             vertical_flip: index_bits(val, 6),
             horizontal_flip: index_bits(val, 5),
+            // Bit 4 is not used
             vram_bank: VRAMBank::from_int(index_bits(val, 3) as u8).unwrap(),
+            palette: val & 0x07,
         }
     }
 }
 
+#[derive(Clone, Copy)]
 pub(super) struct Pixel {
     color_idx: u8,
-    // palette: u8,
+    palette: u8,
     // sprite_priority: u8,
     // background_priority: bool,
 }
 
 pub(super) struct PixelFetcher {
     state: PixelFetcherState,
+    fetching_x: u8,
 }
 impl PixelFetcher {
     pub fn new() -> Self {
         Self {
             state: PixelFetcherState::initial_state(),
+            fetching_x: 0,
         }
     }
 }
@@ -94,11 +106,24 @@ pub(super) fn tick(state: &mut GBCState, ctrl_reg: &LCDControl) {
             addr,
         } => {
             let tile_row_high = get_bg_tile_data(state, addr, &tile_attr);
-            let pixels = build_pixels_from_tile_row(tile_row_high, tile_row_low);
+            let pixels = build_pixels_from_tile_row(tile_row_high, tile_row_low, &tile_attr);
             state.render_engine.pixel_fetcher.state = PixelFetcherState::PixelsReady { pixels };
         }
-        PixelFetcherState::PixelsReady { .. } => {
-            // Do nothing, wait for pixles to be consumed
+        PixelFetcherState::PixelsReady { ref pixels } => {
+            if state.render_engine.bg_fifo.is_empty() {
+                state.render_engine.bg_fifo.extend(pixels.iter().copied());
+                let next_x = state.render_engine.pixel_fetcher.fetching_x + 8;
+                if next_x >= GBC_RESOLUTION_X {
+                    state.render_engine.pixel_fetcher.state = PixelFetcherState::FinishedScanline;
+                    state.render_engine.pixel_fetcher.fetching_x = 0;
+                } else {
+                    state.render_engine.pixel_fetcher.state = PixelFetcherState::FetchTileID;
+                    state.render_engine.pixel_fetcher.fetching_x = next_x;
+                }
+            }
+        }
+        PixelFetcherState::FinishedScanline => {
+            // Do nothing
         }
     }
 }
@@ -115,8 +140,11 @@ fn get_bg_tile_id_and_attr(state: &mut GBCState, ctrl_reg: &LCDControl) -> (u8, 
 
     let scroll_x = lcd_controller::get_scroll_x(state);
     // Purposely wrap around after 256 pixels (max u8 size)
-    todo!("Get X");
-    let x_coordinate = 0_u8.wrapping_add(scroll_x);
+    let x_coordinate = state
+        .render_engine
+        .pixel_fetcher
+        .fetching_x
+        .wrapping_add(scroll_x);
 
     let y = lcd_controller::get_lcd_y_coordinate(state);
     let scroll_y = lcd_controller::get_scroll_y(state);
@@ -175,9 +203,12 @@ fn get_bg_tile_data(state: &mut GBCState, tile_addr: u16, attr: &TileAttributes)
     tile_row_low
 }
 
-fn build_pixels_from_tile_row(row_high: u8, row_low: u8) -> [Pixel; 8] {
+fn build_pixels_from_tile_row(row_high: u8, row_low: u8, attr: &TileAttributes) -> [Pixel; 8] {
     core::array::from_fn(|i| {
         let color_idx = (index_bits(row_high, i) as u8) << 1 | index_bits(row_low, i) as u8;
-        Pixel { color_idx }
+        Pixel {
+            color_idx,
+            palette: attr.palette,
+        }
     })
 }

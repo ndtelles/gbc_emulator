@@ -4,8 +4,9 @@ mod memory_bank_controller;
 use std::{borrow::Cow, cmp::min};
 
 use enum_map::{enum_map, EnumMap};
+use color_eyre::eyre::Result;
 
-use crate::gbc::virtual_memory::memory_area::MemoryPermission;
+use crate::{gbc::virtual_memory::memory_area::MemoryPermission, util::index_bits};
 
 use self::{
     memory_area::{MemoryArea, MemoryAreaName},
@@ -39,6 +40,7 @@ const WORK_RAM_BANKED_ADDR_END: u16 = 0xDFFF;
 pub const OAM_ADDR: u16 = 0xFE00;
 const OAM_ADDR_END: u16 = 0xFE9F;
 
+const BG_PALETTE_ADDR: u16 = 0xFF69;
 const IO_REGISTERS_ADDR: u16 = 0xFF00;
 const IO_REGISTERS_ADDR_END: u16 = 0xFF7F;
 
@@ -54,6 +56,7 @@ const WORK_RAM_BANK_REGISTER: u16 = 0xFF70;
 pub const VRAM_BANK_REGISTER: u16 = 0xFF4F;
 const OAM_DMA_REGISTER: u16 = 0xFF46;
 pub const VRAM_DMA_REGISTER: u16 = 0xFF55;
+const BG_PALETTE_INDEX_REGISTER: u16 = 0xFF68;
 
 /**
  * ROM Data Addresses
@@ -67,10 +70,10 @@ pub struct VirtualMemory {
 }
 
 impl VirtualMemory {
-    pub fn new(rom_data: Vec<u8>) -> Self {
-        let num_rom_banks = get_num_rom_banks(&rom_data);
-        let num_ext_ram_banks = get_num_ext_ram_banks(&rom_data);
-        let mbc = memory_bank_controller::build_mbc(&rom_data);
+    pub fn new(rom_data: Vec<u8>) -> Result<Self> {
+        let num_rom_banks = get_num_rom_banks(&rom_data)?;
+        let num_ext_ram_banks = get_num_ext_ram_banks(&rom_data)?;
+        let mbc = memory_bank_controller::build_mbc(&rom_data)?;
 
         let mut vm = Self {
             mbc,
@@ -109,6 +112,8 @@ impl VirtualMemory {
                     1,
                     MemoryPermission::ReadAndWrite,
                 ),
+                // 64 Bytes of selectable palette memory
+                MemoryAreaName::BGPalette => MemoryArea::new(BG_PALETTE_ADDR, BG_PALETTE_ADDR, 64, MemoryPermission::ReadAndWrite),
                 MemoryAreaName::IORegisters => MemoryArea::new(
                     IO_REGISTERS_ADDR,
                     IO_REGISTERS_ADDR_END,
@@ -134,7 +139,7 @@ impl VirtualMemory {
         vm.areas[MemoryAreaName::PrgRomFixed]
             .fill_from_src(&rom_data[..=PRG_ROM_FIXED_ADDR_END.into()]);
         vm.areas[MemoryAreaName::PrgRomBanked].fill_from_src(&rom_data);
-        vm
+        Ok(vm)
     }
 }
 
@@ -147,6 +152,8 @@ fn map_memory(addr: u16) -> MemoryAreaName {
         WORK_RAM_FIXED_ADDR..=WORK_RAM_FIXED_ADDR_END => MemoryAreaName::WorkRamFixed,
         WORK_RAM_BANKED_ADDR..=WORK_RAM_BANKED_ADDR_END => MemoryAreaName::WorkRamBanked,
         OAM_ADDR..=OAM_ADDR_END => MemoryAreaName::Oam,
+        // BG Pallete must be specified before IO registers in this mapping!
+        BG_PALETTE_ADDR => MemoryAreaName::BGPalette,
         IO_REGISTERS_ADDR..=IO_REGISTERS_ADDR_END => MemoryAreaName::IORegisters,
         HIGH_RAM_ADDR..=HIGH_RAM_ADDR_END => MemoryAreaName::HighRam,
         IE_REGISTER_ADDR => MemoryAreaName::IERegister,
@@ -180,6 +187,21 @@ fn handle_write_triggered_events(state: &mut GBCState, addr: u16, val: u8) {
         }
         OAM_DMA_REGISTER => dma_controller::trigger_oam_transfer(state, val),
         VRAM_DMA_REGISTER => dma_controller::trigger_vram_transfer(state, val),
+        // Set the palette index
+        BG_PALETTE_INDEX_REGISTER => {
+            let palette_idx = (val & 0x3F).into();
+            state.mem.areas[MemoryAreaName::BGPalette].set_active_bank(palette_idx);
+        }
+        // Maybe auto increment after writing to palette
+        BG_PALETTE_ADDR => {
+            let palette_reg_val = state.mem.areas[MemoryAreaName::IORegisters].read(addr);
+            let auto_incr = index_bits(palette_reg_val, 7);
+            if auto_incr {
+                let curr_bank = state.mem.areas[MemoryAreaName::BGPalette].get_active_bank();
+                let new_bank = (curr_bank + 1) % 64;
+                state.mem.areas[MemoryAreaName::BGPalette].set_active_bank(new_bank);
+            }
+        }
         _ => {}
     };
 }
@@ -234,4 +256,8 @@ pub fn write_bytes(state: &mut GBCState, addr: u16, vals: &[u8]) {
         let next_addr = area.get_end_addr().wrapping_add(1);
         write_bytes(state, next_addr, rest);
     }
+}
+
+pub fn borrow_palette_mem(state: &GBCState) -> &[u8] {
+    state.mem.areas[MemoryAreaName::BGPalette].borrow_raw_data()
 }

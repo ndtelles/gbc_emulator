@@ -1,11 +1,15 @@
 use std::cmp::max;
 
+use color_eyre::eyre::{bail, ensure, Result};
 use enum_map::EnumMap;
 use int_enum::IntEnum;
 
 use crate::util::combine_high_low;
 
-use super::{memory_area::{MemoryArea, MemoryAreaName, MemoryPermission}, EXT_RAM_SIZE_ADDR, ROM_SIZE_ADDR};
+use super::{
+    memory_area::{MemoryArea, MemoryAreaName, MemoryPermission},
+    EXT_RAM_SIZE_ADDR, ROM_SIZE_ADDR,
+};
 
 const CARTRIDGE_TYPE_ADDR: u16 = 0x0147;
 
@@ -139,30 +143,32 @@ impl MBC for MBC5 {
     }
 }
 
-pub(super) fn build_mbc(rom_data: &Vec<u8>) -> Box<dyn MBC> {
+pub(super) fn build_mbc(rom_data: &Vec<u8>) -> Result<Box<dyn MBC>> {
     let code = rom_data[CARTRIDGE_TYPE_ADDR as usize];
-    match code {
+    let mbc: Box<dyn MBC> = match code {
         0x00 => Box::new(NoMBC {}),
         0x01..=0x03 => Box::new(MBC1::new()),
         0x19..=0x1E => Box::new(MBC5::new()),
-        _ => unimplemented!(),
-    }
+        _ => bail!("Unimplemented or invalid cartridge type code {:#04x}", code),
+    };
+    Ok(mbc)
 }
 
-pub(super) fn get_num_ext_ram_banks(rom_data: &Vec<u8>) -> usize {
+pub(super) fn get_num_ext_ram_banks(rom_data: &Vec<u8>) -> Result<usize> {
     let code = rom_data[EXT_RAM_SIZE_ADDR as usize];
-    match code {
+    let num = match code {
         0x00 => 0,
         0x02 => 1,
         0x03 => 4,
         0x04 => 16,
         0x05 => 8,
-        _ => panic!(),
-    }
+        _ => bail!("Invalid external RAM size code {:#04x}", code),
+    };
+    Ok(num)
 }
 
-pub(super) fn get_num_rom_banks(rom_data: &Vec<u8>) -> usize {
+pub(super) fn get_num_rom_banks(rom_data: &Vec<u8>) -> Result<usize> {
     let code = rom_data[ROM_SIZE_ADDR as usize];
-    assert!(code <= 0x08);
-    0x2 << code
+    ensure!(code <= 0x08, "Invalid ROM size code {:#04x}", code);
+    Ok(0x2 << code)
 }
