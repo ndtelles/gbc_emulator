@@ -1,6 +1,6 @@
 use int_enum::IntEnum;
 
-use crate::util::index_bits;
+use crate::util::{index_bits, set_bit};
 
 use super::{
     virtual_memory::{self, VRAM_BANK_REGISTER},
@@ -8,10 +8,14 @@ use super::{
 };
 
 const LCD_CONTROL_REGISTER: u16 = 0xFF40;
-const LCD_STATUS_REGISTER: u16 = 0xFF41;
+pub const LCD_STATUS_REGISTER: u16 = 0xFF41;
 const SCROLL_Y_REGISTER: u16 = 0xFF42;
 const SCROLL_X_REGISTER: u16 = 0xFF43;
-const LCD_Y_COORDINATE_REGISTER: u16 = 0xFF44;
+pub const LCD_Y_COORDINATE_REGISTER: u16 = 0xFF44;
+
+const CYCLES_PER_SCANLINE: u16 = 114;
+const CYCLES_BEFORE_DRAWING: u16 = 20;
+const VERTICAL_BLANK_BEGIN_CYCLE: u16 = 16416;
 
 #[repr(u8)]
 #[derive(Clone, Copy, IntEnum)]
@@ -75,7 +79,7 @@ pub enum PPUMode {
 
 // STAT register
 pub struct LCDStatus {
-    pub lyc_match_ly_interrupt_select: bool,
+    pub lyc_match_ly_interrupt_source: bool,
     pub oam_stat_interrupt_source: bool,
     pub vblank_interrupt_source: bool,
     pub hblank_interrupt_source: bool,
@@ -86,7 +90,7 @@ pub struct LCDStatus {
 impl From<u8> for LCDStatus {
     fn from(val: u8) -> Self {
         Self {
-            lyc_match_ly_interrupt_select: index_bits(val, 6),
+            lyc_match_ly_interrupt_source: index_bits(val, 6),
             oam_stat_interrupt_source: index_bits(val, 5),
             vblank_interrupt_source: index_bits(val, 4),
             hblank_interrupt_source: index_bits(val, 3),
@@ -130,4 +134,51 @@ pub fn read_from_vram_bank(state: &mut GBCState, addr: u16, bank: VRAMBank) -> u
     // Set VRAM bank back. Not sure if this is necessary
     set_vram_bank(state, original_bank_reg);
     data
+}
+
+pub fn tick(state: &mut GBCState) {
+    let scanline_idx = state.machine_cycle % CYCLES_PER_SCANLINE;
+    if scanline_idx == 0 {
+        // Beginning of scanline
+        set_lcd_y_coordinate(state, (state.machine_cycle / CYCLES_PER_SCANLINE) as u8)
+    }
+
+    match scanline_idx {
+        0 if state.machine_cycle == VERTICAL_BLANK_BEGIN_CYCLE => {
+            update_ppu_mode(state, PPUMode::VBlank)
+        }
+        0 if state.machine_cycle < VERTICAL_BLANK_BEGIN_CYCLE => {
+            update_ppu_mode(state, PPUMode::OAMScan)
+        }
+        CYCLES_BEFORE_DRAWING if state.machine_cycle < VERTICAL_BLANK_BEGIN_CYCLE => {
+            update_ppu_mode(state, PPUMode::Drawing);
+        }
+        _ => {}
+    };
+}
+
+pub fn update_ppu_mode(state: &mut GBCState, new_mode: PPUMode) {
+    let mut val = virtual_memory::read(state, LCD_STATUS_REGISTER);
+    val = (val & 0xFC) | new_mode.int_value();
+    // TODO enable interrupt
+    virtual_memory::write_without_triggers(state, LCD_STATUS_REGISTER, val);
+}
+
+/**
+ * Update comparison of lyc and ly in STAT register
+ */
+pub fn update_lyc_match_ly_check(state: &mut GBCState) {
+    let ly = virtual_memory::read(state, LCD_Y_COORDINATE_REGISTER);
+    let lyc = virtual_memory::read(state, LCD_Y_COORDINATE_REGISTER);
+    let mut stat = virtual_memory::read(state, LCD_STATUS_REGISTER);
+    let matches = ly == lyc;
+    // TODO enable interrupt if matches
+    stat = (stat & 0xFB) | ((matches as u8) << 2);
+    virtual_memory::write(state, LCD_STATUS_REGISTER, stat);
+}
+
+// Should only be set internally by lcd controller
+fn set_lcd_y_coordinate(state: &mut GBCState, y: u8) {
+    // Write will trigger update_lyc_match_ly_check call from vm
+    virtual_memory::write(state, LCD_Y_COORDINATE_REGISTER, y);
 }

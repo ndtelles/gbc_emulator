@@ -3,8 +3,8 @@ mod memory_bank_controller;
 
 use std::{borrow::Cow, cmp::min};
 
-use enum_map::{enum_map, EnumMap};
 use color_eyre::eyre::Result;
+use enum_map::{enum_map, EnumMap};
 
 use crate::{gbc::virtual_memory::memory_area::MemoryPermission, util::index_bits};
 
@@ -13,7 +13,11 @@ use self::{
     memory_bank_controller::{get_num_ext_ram_banks, get_num_rom_banks, MBC},
 };
 
-use super::{dma_controller, GBCState};
+use super::{
+    dma_controller,
+    lcd_controller::{self, LCD_STATUS_REGISTER, LCD_Y_COORDINATE_REGISTER},
+    GBCState,
+};
 
 /**
  * Memory areas boundaries in contigous order. Would use ranges but
@@ -54,6 +58,7 @@ const IE_REGISTER_ADDR: u16 = 0xFFFF;
  */
 const WORK_RAM_BANK_REGISTER: u16 = 0xFF70;
 pub const VRAM_BANK_REGISTER: u16 = 0xFF4F;
+const LY_COMPARE_REGISTER: u16 = 0xFF45;
 const OAM_DMA_REGISTER: u16 = 0xFF46;
 pub const VRAM_DMA_REGISTER: u16 = 0xFF55;
 const BG_PALETTE_INDEX_REGISTER: u16 = 0xFF68;
@@ -163,6 +168,20 @@ fn map_memory(addr: u16) -> MemoryAreaName {
 }
 
 /**
+ * Preprocess value for some addresses
+ */
+fn preprocess_value(state: &GBCState, addr: u16, val: u8) -> u8 {
+    match addr {
+        LCD_STATUS_REGISTER => {
+            // ROM program should not be able to set lower 3 bits
+            let stat = state.mem.areas[MemoryAreaName::IORegisters].read(addr);
+            (val & 0xF8) | (stat & 0x07)
+        }
+        _ => val,
+    }
+}
+
+/**
  * Writing to some addresses trigger events such as setting bank registers or starting DMA.
  */
 fn handle_write_triggered_events(state: &mut GBCState, addr: u16, val: u8) {
@@ -187,6 +206,10 @@ fn handle_write_triggered_events(state: &mut GBCState, addr: u16, val: u8) {
         }
         OAM_DMA_REGISTER => dma_controller::trigger_oam_transfer(state, val),
         VRAM_DMA_REGISTER => dma_controller::trigger_vram_transfer(state, val),
+        // Update LY == LYC comparison
+        LY_COMPARE_REGISTER | LCD_Y_COORDINATE_REGISTER => {
+            lcd_controller::update_lyc_match_ly_check(state)
+        }
         // Set the palette index
         BG_PALETTE_INDEX_REGISTER => {
             let palette_idx = (val & 0x3F).into();
@@ -233,7 +256,9 @@ pub fn read_bytes(state: &GBCState, addr: u16, length_bytes: usize) -> Cow<[u8]>
 }
 
 pub fn write(state: &mut GBCState, addr: u16, val: u8) {
-    write_without_triggers(state, addr, val);
+    let val = preprocess_value(state, addr, val);
+    let area = map_memory(addr);
+    state.mem.areas[area].write(addr, val);
     handle_write_triggered_events(state, addr, val);
 }
 

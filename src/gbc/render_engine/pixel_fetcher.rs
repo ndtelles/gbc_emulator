@@ -65,8 +65,8 @@ impl From<u8> for TileAttributes {
 
 #[derive(Clone, Copy)]
 pub(super) struct Pixel {
-    color_idx: u8,
-    palette: u8,
+    pub color_idx: u8,
+    pub palette: u8,
     // sprite_priority: u8,
     // background_priority: bool,
 }

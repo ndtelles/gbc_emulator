@@ -6,7 +6,7 @@ mod lcd_controller;
 mod render_engine;
 mod virtual_memory;
 
-use std::sync::mpsc::Sender;
+use std::sync::{Mutex, Arc};
 
 use crate::gbc::cpu::CPU;
 use crate::gbc::virtual_memory::VirtualMemory;
@@ -26,19 +26,22 @@ pub struct GBC {
 }
 
 impl GBC {
-    pub fn new(rom_data: Vec<u8>, img_publisher: Sender<RetainedImage>) -> Result<Self> {
+    pub fn new(rom_data: Vec<u8>, display_buffer: Arc<Mutex<RetainedImage>>) -> Result<Self> {
         Ok(Self {
-            state: GBCState::new(rom_data, img_publisher)?,
+            state: GBCState::new(rom_data, display_buffer)?,
         })
     }
 
     pub fn run(&mut self) {
         loop {
+            // LCD controller should be first since it controls what mode
+            // everything following runs in.
+            lcd_controller::tick(&mut self.state);
             delay_action::tick(&mut self.state);
             dma_controller::tick(&mut self.state);
             cpu::tick(&mut self.state);
             render_engine::tick(&mut self.state);
-            // self.state.machine_cycle = (self.state.machine_cycle + 1) % MACHINE_CYCLES_PER_FRAME;
+            self.state.machine_cycle = (self.state.machine_cycle + 1) % MACHINE_CYCLES_PER_FRAME;
         }
     }
 }
@@ -54,14 +57,14 @@ pub struct GBCState {
 }
 
 impl GBCState {
-    pub fn new(rom_data: Vec<u8>, img_publisher: Sender<RetainedImage>) -> Result<Self> {
+    pub fn new(rom_data: Vec<u8>, display_buffer: Arc<Mutex<RetainedImage>>) -> Result<Self> {
         Ok(Self {
             cpu: CPU::new(),
             mem: VirtualMemory::new(rom_data)?,
             intr_ctrl: InterruptController::new(),
             dma_ctrl: DMAController::new(),
             delayed_actions: DelayedActions::new(),
-            render_engine: Renderer::new(img_publisher),
+            render_engine: Renderer::new(display_buffer),
             machine_cycle: 0,
         })
     }

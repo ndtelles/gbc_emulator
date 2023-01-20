@@ -15,10 +15,10 @@ impl App {
     fn gbc_ui(&mut self, ctx: &Context, ui: &mut Ui) {
         match self.gbc {
             Some(ref mut gbc) => {
-                gbc.pull_latest_image();
+                let display_buffer = gbc.display_buffer.lock().unwrap();
                 ui.add(egui::Image::new(
-                    gbc.latest_image.texture_id(ctx),
-                    gbc.latest_image.size_vec2(),
+                    display_buffer.texture_id(ctx),
+                    display_buffer.size_vec2(),
                 ));
             }
             None => {

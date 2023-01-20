@@ -6,8 +6,8 @@ use std::fs::File;
 use std::io::prelude::*;
 use std::io::BufReader;
 use std::path::PathBuf;
-use std::sync::mpsc::channel;
-use std::sync::mpsc::Receiver;
+use std::sync::Arc;
+use std::sync::Mutex;
 use std::thread;
 use std::thread::JoinHandle;
 
@@ -38,38 +38,30 @@ impl App {
     }
 
     fn spawn_gbc(&mut self, path: PathBuf) {
-        let (tx_image, rx_image) = channel();
+        let display_buffer = Arc::new(Mutex::new(RetainedImage::from_color_image(
+            "start_frame",
+            eframe::epaint::ColorImage::example(),
+        )));
+        let display_buffer_for_gbc_thread = Arc::clone(&display_buffer);
 
         let handle = thread::spawn(move || -> Result<()> {
             let file = File::open(path)?;
             let mut buf_reader = BufReader::new(file);
             let mut rom_data = Vec::new();
             buf_reader.read_to_end(&mut rom_data)?;
-            let mut gbc = GBC::new(rom_data, tx_image)?;
+            let mut gbc = GBC::new(rom_data, display_buffer_for_gbc_thread)?;
             gbc.run();
             Ok(())
         });
 
         self.gbc = Some(GBCThread {
             handle,
-            rx_image,
-            latest_image: RetainedImage::from_color_image(
-                "start_frame",
-                eframe::epaint::ColorImage::example(),
-            ),
+            display_buffer,
         });
     }
 }
 
 struct GBCThread {
     handle: JoinHandle<Result<()>>,
-    rx_image: Receiver<RetainedImage>,
-    latest_image: RetainedImage,
-}
-impl GBCThread {
-    fn pull_latest_image(&mut self) {
-        if let Ok(img) = self.rx_image.try_recv() {
-            self.latest_image = img;
-        }
-    }
+    display_buffer: Arc<Mutex<RetainedImage>>,
 }

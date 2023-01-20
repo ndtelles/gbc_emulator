@@ -1,23 +1,32 @@
+mod color_value;
 mod pixel_fetcher;
 
-use std::{collections::VecDeque, sync::mpsc::Sender};
+use std::{
+    collections::VecDeque,
+    sync::{Arc, Mutex},
+};
 
 use eframe::epaint::ColorImage;
 use egui_extras::RetainedImage;
+
+use crate::util::combine_high_low;
 
 use self::pixel_fetcher::{Pixel, PixelFetcher};
 
 use super::{
     lcd_controller::{self, PPUMode},
-    GBCState,
+    virtual_memory, GBCState,
 };
 
 const GBC_RESOLUTION_X: u8 = 160;
 const GBC_RESOLUTION_Y: u8 = 144;
 const IMG_BUFFER_SIZE: usize = GBC_RESOLUTION_X as usize * GBC_RESOLUTION_Y as usize * 3;
 
+const BYTES_PER_PALETTE: u8 = 8;
+const BYTES_PER_PALETTE_COLOR: u8 = 2;
+
 pub struct Renderer {
-    img_publisher: Sender<RetainedImage>,
+    display_buffer: Arc<Mutex<RetainedImage>>,
     // Flat RGB values for each pixel
     img_buffer: [u8; IMG_BUFFER_SIZE],
     // FIFO of pixels to draw. Refilled by pixel fetcher
@@ -30,9 +39,9 @@ pub struct Renderer {
 }
 
 impl Renderer {
-    pub fn new(img_publisher: Sender<RetainedImage>) -> Self {
+    pub fn new(display_buffer: Arc<Mutex<RetainedImage>>) -> Self {
         Self {
-            img_publisher,
+            display_buffer,
             img_buffer: [0xFF; IMG_BUFFER_SIZE],
             bg_fifo: VecDeque::with_capacity(8),
             obj_fifo: VecDeque::with_capacity(8),
@@ -46,44 +55,68 @@ impl Renderer {
 
 pub fn tick(state: &mut GBCState) {
     let status_reg = lcd_controller::get_lcd_status_register(state);
-    let ctrl_reg = lcd_controller::get_lcd_control_register(state);
 
     match status_reg.ppu_mode {
         PPUMode::OAMScan => {}
         PPUMode::Drawing => {
+            let ctrl_reg = lcd_controller::get_lcd_control_register(state);
+
             pixel_fetcher::tick(state, &ctrl_reg);
             draw(state);
 
             if state.render_engine.lcd_x == GBC_RESOLUTION_X {
-                if state.render_engine.lcd_y == GBC_RESOLUTION_Y {
-                    // Finish frame
-                    publish_image(state);
-                } else {
-                    // Finish scanline
-                }
+                // Scanline drawing complete
                 state.render_engine.lcd_x = 0;
+                state.render_engine.lcd_y += 1;
+                lcd_controller::update_ppu_mode(state, PPUMode::HBlank);
+
+                if state.render_engine.lcd_y == GBC_RESOLUTION_Y {
+                    // Frame drawing complete
+                    state.render_engine.lcd_y = 0;
+                    publish_image(state);
+                }
             }
         }
-        PPUMode::HBlank | PPUMode::VBlank => {
+        PPUMode::HBlank => {}
+        PPUMode::VBlank => {
             // Do Nothing
         }
     }
 }
 
 fn draw(state: &mut GBCState) {
-    let px = state.render_engine.bg_fifo.pop_front();
-    if let None = px {
+    let pixel = state.render_engine.bg_fifo.pop_front();
+    if let None = pixel {
         return;
     }
-    let px = px.unwrap();
+    let pixel = pixel.unwrap();
+    let rgb = pixel_to_rgb(state, &pixel);
+    let buffer_idx = state.render_engine.lcd_x as usize * state.render_engine.lcd_y as usize * 3;
+    let buffer_slice = &mut state.render_engine.img_buffer[buffer_idx..(buffer_idx + 3)];
+    buffer_slice.copy_from_slice(&rgb);
+
     state.render_engine.lcd_x += 1;
 }
 
-fn publish_image(state: &GBCState) {
+fn publish_image(state: &mut GBCState) {
     let image = ColorImage::from_rgb(
         [GBC_RESOLUTION_X.into(), GBC_RESOLUTION_Y.into()],
         &state.render_engine.img_buffer,
     );
     let texture = RetainedImage::from_color_image("GBC frame", image);
-    state.render_engine.img_publisher.send(texture).ok();
+    let mut display_buffer = state.render_engine.display_buffer.lock().unwrap();
+    *display_buffer = texture;
+}
+
+fn pixel_to_rgb(state: &GBCState, pixel: &Pixel) -> [u8; 3] {
+    let palettes = virtual_memory::borrow_palette_mem(state);
+    let palette_idx =
+        (pixel.palette * BYTES_PER_PALETTE) + (pixel.color_idx * BYTES_PER_PALETTE_COLOR);
+    let low = palettes[palette_idx as usize];
+    let high = palettes[palette_idx as usize + 1];
+    let rgb555 = combine_high_low(high, low);
+    let r5 = (rgb555 & 0x1F) as u8;
+    let g5 = ((rgb555 >> 5) & 0x1F) as u8;
+    let b5 = ((rgb555 >> 10) & 0x1F) as u8;
+    color_value::rgb555_to_rgb888(&[r5, g5, b5])
 }

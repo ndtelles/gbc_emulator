@@ -71,7 +71,6 @@ impl MemoryArea {
     }
 
     pub(super) fn set_active_bank(&mut self, active_bank: usize) {
-        assert!(active_bank < self.num_banks);
         self.active_bank = active_bank;
     }
 
