@@ -40,6 +40,12 @@ impl GBC {
             delay_action::tick(&mut self.state);
             dma_controller::tick(&mut self.state);
             cpu::tick(&mut self.state);
+            cpu::tick(&mut self.state);
+            cpu::tick(&mut self.state);
+            cpu::tick(&mut self.state);
+            render_engine::tick(&mut self.state);
+            render_engine::tick(&mut self.state);
+            render_engine::tick(&mut self.state);
             render_engine::tick(&mut self.state);
             self.state.machine_cycle = (self.state.machine_cycle + 1) % MACHINE_CYCLES_PER_FRAME;
         }

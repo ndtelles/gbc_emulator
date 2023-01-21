@@ -7,7 +7,7 @@ use crate::util::{combine_high_low, index_bits};
 
 use super::{
     virtual_memory::{self, OAM_ADDR, VRAM_DMA_REGISTER},
-    GBCState,
+    GBCState, lcd_controller::{self, PPUMode},
 };
 
 const OAM_TRANSFER_BYTES: usize = 160;
@@ -119,7 +119,7 @@ fn process_oam_transfer(state: &mut GBCState) {
 /**
  * Write 16 bytes per hblank
  */
-fn process_hblank_transfer(state: &mut GBCState) {
+pub fn process_hblank_transfer(state: &mut GBCState) {
     let next = state.dma_ctrl.hblank_transfer.iterator.next();
     if next.is_none() {
         return;

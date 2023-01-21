@@ -1,6 +1,9 @@
 use int_enum::IntEnum;
+use tracing::{debug, trace};
 
-use crate::util::{index_bits, set_bit};
+use crate::{
+    util::{index_bits, set_bit}, gbc::dma_controller,
+};
 
 use super::{
     virtual_memory::{self, VRAM_BANK_REGISTER},
@@ -158,10 +161,16 @@ pub fn tick(state: &mut GBCState) {
 }
 
 pub fn update_ppu_mode(state: &mut GBCState, new_mode: PPUMode) {
+    trace!("PPU Mode updated to {}", new_mode.int_value());
     let mut val = virtual_memory::read(state, LCD_STATUS_REGISTER);
     val = (val & 0xFC) | new_mode.int_value();
     // TODO enable interrupt
     virtual_memory::write_without_triggers(state, LCD_STATUS_REGISTER, val);
+
+    if let PPUMode::HBlank = new_mode {
+        // Trigger hblank DMA transfer
+        dma_controller::process_hblank_transfer(state);
+    }
 }
 
 /**
@@ -179,6 +188,7 @@ pub fn update_lyc_match_ly_check(state: &mut GBCState) {
 
 // Should only be set internally by lcd controller
 fn set_lcd_y_coordinate(state: &mut GBCState, y: u8) {
+    trace!("LCD Y set to {}", y);
     // Write will trigger update_lyc_match_ly_check call from vm
     virtual_memory::write(state, LCD_Y_COORDINATE_REGISTER, y);
 }

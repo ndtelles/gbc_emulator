@@ -13,6 +13,7 @@ use std::thread::JoinHandle;
 
 use color_eyre::eyre::{eyre, Result};
 use egui_extras::RetainedImage;
+use tracing::info_span;
 
 use crate::gbc::GBC;
 
@@ -45,12 +46,16 @@ impl App {
         let display_buffer_for_gbc_thread = Arc::clone(&display_buffer);
 
         let handle = thread::spawn(move || -> Result<()> {
+            let span = info_span!("GBC Thread").entered();
+
             let file = File::open(path)?;
             let mut buf_reader = BufReader::new(file);
             let mut rom_data = Vec::new();
             buf_reader.read_to_end(&mut rom_data)?;
             let mut gbc = GBC::new(rom_data, display_buffer_for_gbc_thread)?;
             gbc.run();
+            
+            span.exit();
             Ok(())
         });
 

@@ -95,7 +95,7 @@ impl MBC for MBC1 {
                 self.ram_or_upper_rom_bank_select,
             ),
         };
-        mem_areas[MemoryAreaName::PrgRomFixed].set_active_bank(rom_bank.into());
+        mem_areas[MemoryAreaName::PrgRomBanked].set_active_bank(rom_bank.into());
         mem_areas[MemoryAreaName::ExternalRam].set_active_bank(ram_bank.into());
     }
 }
@@ -138,7 +138,7 @@ impl MBC for MBC5 {
         }
         let rom_bank = combine_high_low(self.rom_bank_select_high, self.rom_bank_select_low).into();
 
-        mem_areas[MemoryAreaName::PrgRomFixed].set_active_bank(rom_bank);
+        mem_areas[MemoryAreaName::PrgRomBanked].set_active_bank(rom_bank);
         mem_areas[MemoryAreaName::ExternalRam].set_active_bank(self.ram_bank_select.into());
     }
 }

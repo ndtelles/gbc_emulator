@@ -5,6 +5,7 @@ use std::{borrow::Cow, cmp::min};
 
 use color_eyre::eyre::Result;
 use enum_map::{enum_map, EnumMap};
+use tracing::{debug, debug_span, error, info_span, trace};
 
 use crate::{gbc::virtual_memory::memory_area::MemoryPermission, util::index_bits};
 
@@ -163,7 +164,10 @@ fn map_memory(addr: u16) -> MemoryAreaName {
         HIGH_RAM_ADDR..=HIGH_RAM_ADDR_END => MemoryAreaName::HighRam,
         IE_REGISTER_ADDR => MemoryAreaName::IERegister,
         // Invalid address areas
-        0xE000..=0xFDFF | 0xFEA0..=0xFEFF => unimplemented!(),
+        0xE000..=0xFDFF | 0xFEA0..=0xFEFF => {
+            error!("Invalid memory area");
+            unimplemented!();
+        }
     }
 }
 
@@ -230,8 +234,13 @@ fn handle_write_triggered_events(state: &mut GBCState, addr: u16, val: u8) {
 }
 
 pub fn read(state: &GBCState, addr: u16) -> u8 {
+    let span = debug_span!("VM Read", addr = format!("{:#06x}", addr)).entered();
+
     let area = map_memory(addr);
-    state.mem.areas[area].read(addr)
+    let read_val = state.mem.areas[area].read(addr);
+
+    span.exit();
+    read_val
 }
 
 pub fn read_bytes(state: &GBCState, addr: u16, length_bytes: usize) -> Cow<[u8]> {
@@ -256,10 +265,19 @@ pub fn read_bytes(state: &GBCState, addr: u16, length_bytes: usize) -> Cow<[u8]>
 }
 
 pub fn write(state: &mut GBCState, addr: u16, val: u8) {
+    let span = debug_span!(
+        "VM Write",
+        addr = format!("{:#06x}", addr),
+        value = format!("{:#04x}", val)
+    )
+    .entered();
+
     let val = preprocess_value(state, addr, val);
     let area = map_memory(addr);
     state.mem.areas[area].write(addr, val);
     handle_write_triggered_events(state, addr, val);
+
+    span.exit();
 }
 
 pub fn write_without_triggers(state: &mut GBCState, addr: u16, val: u8) {

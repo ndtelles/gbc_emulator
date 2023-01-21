@@ -17,7 +17,8 @@ egui_extras = {git="https://github.com/emilk/egui/", features = ["image"]}
 rfd = "0.10.0"
 color-eyre = "0.6.2"
 
-tracing-subscriber = "0.3"
+tracing = "0.1.37"
+tracing-subscriber = "0.3.16"
 
 # Optimize dependencies in debug builds:
 [profile.dev.package."*"]

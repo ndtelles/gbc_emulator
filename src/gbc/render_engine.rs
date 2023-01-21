@@ -8,6 +8,7 @@ use std::{
 
 use eframe::epaint::ColorImage;
 use egui_extras::RetainedImage;
+use tracing::debug;
 
 use crate::util::combine_high_low;
 
@@ -68,12 +69,16 @@ pub fn tick(state: &mut GBCState) {
                 // Scanline drawing complete
                 state.render_engine.lcd_x = 0;
                 state.render_engine.lcd_y += 1;
+                // Reset pixel fetcher
+                state.render_engine.pixel_fetcher = PixelFetcher::new();
+
                 lcd_controller::update_ppu_mode(state, PPUMode::HBlank);
 
                 if state.render_engine.lcd_y == GBC_RESOLUTION_Y {
                     // Frame drawing complete
                     state.render_engine.lcd_y = 0;
                     publish_image(state);
+                    debug!("Frame published");
                 }
             }
         }
@@ -91,7 +96,7 @@ fn draw(state: &mut GBCState) {
     }
     let pixel = pixel.unwrap();
     let rgb = pixel_to_rgb(state, &pixel);
-    let buffer_idx = state.render_engine.lcd_x as usize * state.render_engine.lcd_y as usize * 3;
+    let buffer_idx = ((state.render_engine.lcd_y as usize * GBC_RESOLUTION_X as usize) + state.render_engine.lcd_x as usize) * 3;
     let buffer_slice = &mut state.render_engine.img_buffer[buffer_idx..(buffer_idx + 3)];
     buffer_slice.copy_from_slice(&rgb);
 
