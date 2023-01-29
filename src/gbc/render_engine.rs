@@ -8,7 +8,7 @@ use std::{
 
 use eframe::epaint::ColorImage;
 use egui_extras::RetainedImage;
-use tracing::debug;
+use tracing::{debug, debug_span};
 
 use crate::util::combine_high_low;
 
@@ -27,9 +27,11 @@ const BYTES_PER_PALETTE: u8 = 8;
 const BYTES_PER_PALETTE_COLOR: u8 = 2;
 
 pub struct Renderer {
+    // The current frame being displayed
     display_buffer: Arc<Mutex<RetainedImage>>,
     // Flat RGB values for each pixel
-    img_buffer: [u8; IMG_BUFFER_SIZE],
+    // The current frame being drawn
+    working_frame_buffer: [u8; IMG_BUFFER_SIZE],
     // FIFO of pixels to draw. Refilled by pixel fetcher
     bg_fifo: VecDeque<Pixel>,
     obj_fifo: VecDeque<Pixel>,
@@ -43,7 +45,7 @@ impl Renderer {
     pub fn new(display_buffer: Arc<Mutex<RetainedImage>>) -> Self {
         Self {
             display_buffer,
-            img_buffer: [0xFF; IMG_BUFFER_SIZE],
+            working_frame_buffer: [0xFF; IMG_BUFFER_SIZE],
             bg_fifo: VecDeque::with_capacity(8),
             obj_fifo: VecDeque::with_capacity(8),
             obj_slots: [0; 10],
@@ -60,6 +62,13 @@ pub fn tick(state: &mut GBCState) {
     match status_reg.ppu_mode {
         PPUMode::OAMScan => {}
         PPUMode::Drawing => {
+            let span = debug_span!(
+                "Render Engine Draw",
+                x = state.render_engine.lcd_x,
+                y = state.render_engine.lcd_y
+            )
+            .entered();
+
             let ctrl_reg = lcd_controller::get_lcd_control_register(state);
 
             pixel_fetcher::tick(state, &ctrl_reg);
@@ -81,11 +90,10 @@ pub fn tick(state: &mut GBCState) {
                     debug!("Frame published");
                 }
             }
+            
+            span.exit();
         }
-        PPUMode::HBlank => {}
-        PPUMode::VBlank => {
-            // Do Nothing
-        }
+        PPUMode::HBlank | PPUMode::VBlank => {}
     }
 }
 
@@ -96,8 +104,10 @@ fn draw(state: &mut GBCState) {
     }
     let pixel = pixel.unwrap();
     let rgb = pixel_to_rgb(state, &pixel);
-    let buffer_idx = ((state.render_engine.lcd_y as usize * GBC_RESOLUTION_X as usize) + state.render_engine.lcd_x as usize) * 3;
-    let buffer_slice = &mut state.render_engine.img_buffer[buffer_idx..(buffer_idx + 3)];
+    let buffer_idx = ((state.render_engine.lcd_y as usize * GBC_RESOLUTION_X as usize)
+        + state.render_engine.lcd_x as usize)
+        * 3;
+    let buffer_slice = &mut state.render_engine.working_frame_buffer[buffer_idx..(buffer_idx + 3)];
     buffer_slice.copy_from_slice(&rgb);
 
     state.render_engine.lcd_x += 1;
@@ -106,7 +116,7 @@ fn draw(state: &mut GBCState) {
 fn publish_image(state: &mut GBCState) {
     let image = ColorImage::from_rgb(
         [GBC_RESOLUTION_X.into(), GBC_RESOLUTION_Y.into()],
-        &state.render_engine.img_buffer,
+        &state.render_engine.working_frame_buffer,
     );
     let texture = RetainedImage::from_color_image("GBC frame", image);
     let mut display_buffer = state.render_engine.display_buffer.lock().unwrap();

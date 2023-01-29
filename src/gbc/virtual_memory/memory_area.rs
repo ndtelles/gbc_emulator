@@ -1,7 +1,7 @@
 use std::borrow::Cow;
 
 use enum_map::Enum;
-use tracing::error;
+use tracing::{error, trace};
 
 #[derive(Enum)]
 pub enum MemoryAreaName {
@@ -84,12 +84,6 @@ impl MemoryArea {
             return 0xFF;
         }
         let idx = self.translate_virtual_address_to_data_index(addr);
-        if idx >= self.data.len() {
-            error!(
-                "Invalid Read Index. Active bank = {}. Bank Size = {}",
-                self.active_bank, self.bank_size
-            );
-        }
         self.data[idx]
     }
 
@@ -111,6 +105,7 @@ impl MemoryArea {
         if idx >= self.data.len() {
             error!("Invalid Write Index");
         }
+        trace!("Wrote value {:#04x} to {:#06x}", val, addr);
         self.data[idx] = val;
     }
 

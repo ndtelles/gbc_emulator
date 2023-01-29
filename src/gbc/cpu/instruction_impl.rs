@@ -1,7 +1,5 @@
 #![allow(non_snake_case)]
 
-use tracing::trace;
-
 use crate::{
     gbc::{interrupt_controller, virtual_memory, GBCState},
     util::{add_and_get_carries, add_i8_to_u16, index_bits, subtract_and_get_borrows, Bytes},
@@ -51,11 +49,6 @@ pub(super) fn instr_0x04(state: &mut GBCState) {
 pub(super) fn instr_0x05(state: &mut GBCState) {
     op_DEC_reg(state, Register::B);
     consume_cycles(state, 4);
-    trace!(
-        "Register B {} {}",
-        state.cpu.registers.read(Register::B),
-        state.cpu.registers.get_flags().z
-    );
 }
 
 // LD B, u8
@@ -113,11 +106,6 @@ pub(super) fn instr_0x0C(state: &mut GBCState) {
 pub(super) fn instr_0x0D(state: &mut GBCState) {
     op_DEC_reg(state, Register::C);
     consume_cycles(state, 4);
-    trace!(
-        "Register C {} {}",
-        state.cpu.registers.read(Register::C),
-        state.cpu.registers.get_flags().z
-    );
 }
 
 // LD C, u8
@@ -152,7 +140,7 @@ pub(super) fn instr_0x11(state: &mut GBCState) {
 
 // LD (DE), A
 pub(super) fn instr_0x12(state: &mut GBCState) {
-    op_LD_reg_from_regpairptr(state, Register::A, RegisterPair::DE);
+    op_LD_regpairptr_from_reg(state, RegisterPair::DE, Register::A);
     consume_cycles(state, 8);
 }
 

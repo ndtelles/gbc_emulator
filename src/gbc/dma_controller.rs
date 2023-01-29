@@ -7,7 +7,7 @@ use crate::util::{combine_high_low, index_bits};
 
 use super::{
     virtual_memory::{self, OAM_ADDR, VRAM_DMA_REGISTER},
-    GBCState, lcd_controller::{self, PPUMode},
+    GBCState,
 };
 
 const OAM_TRANSFER_BYTES: usize = 160;

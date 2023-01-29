@@ -1,12 +1,12 @@
 use int_enum::IntEnum;
-use tracing::{debug, trace};
+use tracing::{trace, debug_span};
 
 use crate::{
-    util::{index_bits, set_bit}, gbc::dma_controller,
+    util::index_bits, gbc::dma_controller,
 };
 
 use super::{
-    virtual_memory::{self, VRAM_BANK_REGISTER},
+    virtual_memory,
     GBCState,
 };
 
@@ -15,6 +15,7 @@ pub const LCD_STATUS_REGISTER: u16 = 0xFF41;
 const SCROLL_Y_REGISTER: u16 = 0xFF42;
 const SCROLL_X_REGISTER: u16 = 0xFF43;
 pub const LCD_Y_COORDINATE_REGISTER: u16 = 0xFF44;
+pub const LY_COMPARE_REGISTER: u16 = 0xFF45;
 
 const CYCLES_PER_SCANLINE: u16 = 114;
 const CYCLES_BEFORE_DRAWING: u16 = 20;
@@ -72,7 +73,7 @@ pub fn get_lcd_control_register(state: &GBCState) -> LCDControl {
 }
 
 #[repr(u8)]
-#[derive(Clone, Copy, IntEnum)]
+#[derive(Clone, Copy, IntEnum, PartialEq)]
 pub enum PPUMode {
     HBlank = 0,
     VBlank = 1,
@@ -120,26 +121,13 @@ pub fn get_lcd_y_coordinate(state: &GBCState) -> u8 {
     virtual_memory::read(state, LCD_Y_COORDINATE_REGISTER)
 }
 
-pub fn set_vram_bank(state: &mut GBCState, bank: VRAMBank) {
-    virtual_memory::write(state, VRAM_BANK_REGISTER, bank as u8)
-}
-
-pub fn get_vram_bank(state: &GBCState) -> VRAMBank {
-    VRAMBank::from_int(virtual_memory::read(state, VRAM_BANK_REGISTER) & 0x01).unwrap()
-}
-
 pub fn read_from_vram_bank(state: &mut GBCState, addr: u16, bank: VRAMBank) -> u8 {
-    let original_bank_reg = get_vram_bank(state);
-    set_vram_bank(state, bank);
-
-    let data = virtual_memory::read(state, addr);
-
-    // Set VRAM bank back. Not sure if this is necessary
-    set_vram_bank(state, original_bank_reg);
-    data
+    virtual_memory::read_override_bank(state, addr, bank.int_value().into())
 }
 
 pub fn tick(state: &mut GBCState) {
+    let span = debug_span!("LCD Controller").entered();
+
     let scanline_idx = state.machine_cycle % CYCLES_PER_SCANLINE;
     if scanline_idx == 0 {
         // Beginning of scanline
@@ -158,13 +146,14 @@ pub fn tick(state: &mut GBCState) {
         }
         _ => {}
     };
+
+    span.exit();
 }
 
 pub fn update_ppu_mode(state: &mut GBCState, new_mode: PPUMode) {
     trace!("PPU Mode updated to {}", new_mode.int_value());
     let mut val = virtual_memory::read(state, LCD_STATUS_REGISTER);
     val = (val & 0xFC) | new_mode.int_value();
-    // TODO enable interrupt
     virtual_memory::write_without_triggers(state, LCD_STATUS_REGISTER, val);
 
     if let PPUMode::HBlank = new_mode {
@@ -178,10 +167,9 @@ pub fn update_ppu_mode(state: &mut GBCState, new_mode: PPUMode) {
  */
 pub fn update_lyc_match_ly_check(state: &mut GBCState) {
     let ly = virtual_memory::read(state, LCD_Y_COORDINATE_REGISTER);
-    let lyc = virtual_memory::read(state, LCD_Y_COORDINATE_REGISTER);
+    let lyc = virtual_memory::read(state, LY_COMPARE_REGISTER);
     let mut stat = virtual_memory::read(state, LCD_STATUS_REGISTER);
     let matches = ly == lyc;
-    // TODO enable interrupt if matches
     stat = (stat & 0xFB) | ((matches as u8) << 2);
     virtual_memory::write(state, LCD_STATUS_REGISTER, stat);
 }

@@ -2,7 +2,11 @@ use int_enum::IntEnum;
 
 use crate::util::{reset_bit, set_bit};
 
-use super::{delay_action, virtual_memory, GBCState};
+use super::{
+    delay_action,
+    lcd_controller::{self, PPUMode},
+    virtual_memory, GBCState,
+};
 
 pub const INTERRUPT_REQUEST_ADDR: u16 = 0xFF0F;
 pub const INTERRUPT_ENABLE_ADDR: u16 = 0xFFFF;
@@ -42,6 +46,21 @@ impl InterruptFlag {
     }
 }
 
+pub fn tick(state: &mut GBCState) {
+    let stat = lcd_controller::get_lcd_status_register(state);
+    if (stat.ppu_mode == PPUMode::HBlank && stat.hblank_interrupt_source)
+        || (stat.ppu_mode == PPUMode::OAMScan && stat.oam_stat_interrupt_source)
+        || (stat.ppu_mode == PPUMode::VBlank && stat.vblank_interrupt_source)
+        || (stat.lyc_match_ly && stat.lyc_match_ly_interrupt_source)
+    {
+        set_interrupt_request_flag(state, InterruptFlag::LcdcStatusInterrupt);
+    }
+
+    if stat.ppu_mode == PPUMode::VBlank {
+        set_interrupt_request_flag(state, InterruptFlag::VerticalBlanking);
+    }
+}
+
 pub fn enable_interrupts(state: &mut GBCState) {
     delay_action::schedule(
         state,
@@ -60,12 +79,12 @@ pub fn disable_interrupts(state: &mut GBCState) {
 
 pub fn set_interrupt_request_flag(state: &mut GBCState, flag: InterruptFlag) {
     let flags = virtual_memory::read(state, INTERRUPT_REQUEST_ADDR);
-    virtual_memory::write(state, INTERRUPT_REQUEST_ADDR, set_bit(flags, flag as usize));
+    virtual_memory::write_without_triggers(state, INTERRUPT_REQUEST_ADDR, set_bit(flags, flag as usize));
 }
 
 pub fn reset_interrupt_request_flag(state: &mut GBCState, flag: InterruptFlag) {
     let flags = virtual_memory::read(state, INTERRUPT_REQUEST_ADDR);
-    virtual_memory::write(
+    virtual_memory::write_without_triggers(
         state,
         INTERRUPT_REQUEST_ADDR,
         reset_bit(flags, flag as usize),

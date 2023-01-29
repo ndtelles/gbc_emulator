@@ -1,4 +1,7 @@
+use std::fmt;
+
 use enum_map::{enum_map, Enum, EnumMap};
+use tracing::trace;
 
 use crate::util::{index_bits, Bytes, combine_high_low};
 
@@ -34,6 +37,7 @@ impl RegisterMapMethods for RegisterMap {
     }
 
     fn write(&mut self, register: Register, val: u8) {
+        trace!("Wrote {:#04x} ({}) to CPU register {}", val, val, register.to_string());
         self[register] = val;
     }
 
@@ -66,7 +70,7 @@ fn map_register_pair_to_register(pair: RegisterPair) -> (Register, Register) {
     }
 }
 
-#[derive(Clone, Copy, Enum)]
+#[derive(Clone, Copy, Enum, Debug)]
 pub enum Register {
     A,
     F,
@@ -77,8 +81,14 @@ pub enum Register {
     H,
     L,
 }
+impl fmt::Display for Register {
+    // Allow printing enum name as string for tracing
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        fmt::Debug::fmt(self, f)
+    }
+}
 
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, Debug)]
 pub enum RegisterPair {
     AF,
     BC,

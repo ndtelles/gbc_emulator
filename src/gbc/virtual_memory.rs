@@ -16,7 +16,8 @@ use self::{
 
 use super::{
     dma_controller,
-    lcd_controller::{self, LCD_STATUS_REGISTER, LCD_Y_COORDINATE_REGISTER},
+    lcd_controller::{self, LCD_STATUS_REGISTER, LCD_Y_COORDINATE_REGISTER, LY_COMPARE_REGISTER},
+    timer_controller::{self, DIVIDER_REGISTER, TIMER_CONTROL_REGISTER},
     GBCState,
 };
 
@@ -59,7 +60,6 @@ const IE_REGISTER_ADDR: u16 = 0xFFFF;
  */
 const WORK_RAM_BANK_REGISTER: u16 = 0xFF70;
 pub const VRAM_BANK_REGISTER: u16 = 0xFF4F;
-const LY_COMPARE_REGISTER: u16 = 0xFF45;
 const OAM_DMA_REGISTER: u16 = 0xFF46;
 pub const VRAM_DMA_REGISTER: u16 = 0xFF55;
 const BG_PALETTE_INDEX_REGISTER: u16 = 0xFF68;
@@ -181,6 +181,8 @@ fn preprocess_value(state: &GBCState, addr: u16, val: u8) -> u8 {
             let stat = state.mem.areas[MemoryAreaName::IORegisters].read(addr);
             (val & 0xF8) | (stat & 0x07)
         }
+        // Writing any value to divider register resets the register
+        DIVIDER_REGISTER => 0,
         _ => val,
     }
 }
@@ -229,6 +231,7 @@ fn handle_write_triggered_events(state: &mut GBCState, addr: u16, val: u8) {
                 state.mem.areas[MemoryAreaName::BGPalette].set_active_bank(new_bank);
             }
         }
+        TIMER_CONTROL_REGISTER => timer_controller::set_timer_control_register(state, val),
         _ => {}
     };
 }
@@ -240,6 +243,18 @@ pub fn read(state: &GBCState, addr: u16) -> u8 {
     let read_val = state.mem.areas[area].read(addr);
 
     span.exit();
+    read_val
+}
+
+/**
+ * Directly read from a specific bank without writing to bank register
+ */
+pub fn read_override_bank(state: &mut GBCState, addr: u16, bank: usize) -> u8 {
+    let area = &mut state.mem.areas[map_memory(addr)];
+    let original_bank = area.get_active_bank();
+    area.set_active_bank(bank);
+    let read_val = area.read(addr);
+    area.set_active_bank(original_bank);
     read_val
 }
 
@@ -280,6 +295,10 @@ pub fn write(state: &mut GBCState, addr: u16, val: u8) {
     span.exit();
 }
 
+/**
+ * Write without using any preprocessing or postprocessing triggers. Useful for GBC internals
+ * setting values.
+ */
 pub fn write_without_triggers(state: &mut GBCState, addr: u16, val: u8) {
     let area = map_memory(addr);
     state.mem.areas[area].write(addr, val);
