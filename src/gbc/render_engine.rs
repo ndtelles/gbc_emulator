@@ -29,6 +29,8 @@ const BYTES_PER_PALETTE_COLOR: u8 = 2;
 pub struct Renderer {
     // The current frame being displayed
     display_buffer: Arc<Mutex<RetainedImage>>,
+    // Allows render enginer to redraw gui when publishing a frame
+    gui_ctx: eframe::egui::Context,
     // Flat RGB values for each pixel
     // The current frame being drawn
     working_frame_buffer: [u8; IMG_BUFFER_SIZE],
@@ -42,9 +44,10 @@ pub struct Renderer {
 }
 
 impl Renderer {
-    pub fn new(display_buffer: Arc<Mutex<RetainedImage>>) -> Self {
+    pub fn new(display_buffer: Arc<Mutex<RetainedImage>>, gui_ctx: eframe::egui::Context) -> Self {
         Self {
             display_buffer,
+            gui_ctx,
             working_frame_buffer: [0xFF; IMG_BUFFER_SIZE],
             bg_fifo: VecDeque::with_capacity(8),
             obj_fifo: VecDeque::with_capacity(8),
@@ -86,11 +89,11 @@ pub fn tick(state: &mut GBCState) {
                 if state.render_engine.lcd_y == GBC_RESOLUTION_Y {
                     // Frame drawing complete
                     state.render_engine.lcd_y = 0;
-                    publish_image(state);
+                    publish_frame(state);
                     debug!("Frame published");
                 }
             }
-            
+
             span.exit();
         }
         PPUMode::HBlank | PPUMode::VBlank => {}
@@ -113,7 +116,7 @@ fn draw(state: &mut GBCState) {
     state.render_engine.lcd_x += 1;
 }
 
-fn publish_image(state: &mut GBCState) {
+fn publish_frame(state: &mut GBCState) {
     let image = ColorImage::from_rgb(
         [GBC_RESOLUTION_X.into(), GBC_RESOLUTION_Y.into()],
         &state.render_engine.working_frame_buffer,
@@ -121,6 +124,8 @@ fn publish_image(state: &mut GBCState) {
     let texture = RetainedImage::from_color_image("GBC frame", image);
     let mut display_buffer = state.render_engine.display_buffer.lock().unwrap();
     *display_buffer = texture;
+
+    state.render_engine.gui_ctx.request_repaint();
 }
 
 fn pixel_to_rgb(state: &GBCState, pixel: &Pixel) -> [u8; 3] {

@@ -27,7 +27,7 @@ impl App {
                         .add_filter("GBC ROM", &["gbc"])
                         .pick_file()
                     {
-                        self.spawn_gbc(path);
+                        self.spawn_gbc(path, ctx);
                     }
                 }
             }

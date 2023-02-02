@@ -12,6 +12,7 @@ use std::thread;
 use std::thread::JoinHandle;
 
 use color_eyre::eyre::{eyre, Result};
+use eframe::egui::Context;
 use egui_extras::RetainedImage;
 use tracing::info_span;
 
@@ -38,12 +39,13 @@ impl App {
         Self { gbc: None }
     }
 
-    fn spawn_gbc(&mut self, path: PathBuf) {
+    fn spawn_gbc(&mut self, path: PathBuf, gui_ctx: &Context) {
         let display_buffer = Arc::new(Mutex::new(RetainedImage::from_color_image(
             "start_frame",
             eframe::epaint::ColorImage::example(),
         )));
         let display_buffer_for_gbc_thread = Arc::clone(&display_buffer);
+        let gui_ctx_clone = gui_ctx.clone();
 
         let handle = thread::spawn(move || -> Result<()> {
             let span = info_span!("GBC Thread").entered();
@@ -52,7 +54,7 @@ impl App {
             let mut buf_reader = BufReader::new(file);
             let mut rom_data = Vec::new();
             buf_reader.read_to_end(&mut rom_data)?;
-            let mut gbc = GBC::new(rom_data, display_buffer_for_gbc_thread)?;
+            let mut gbc = GBC::new(rom_data, display_buffer_for_gbc_thread, gui_ctx_clone)?;
             gbc.run();
             
             span.exit();

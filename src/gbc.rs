@@ -28,9 +28,13 @@ pub struct GBC {
 }
 
 impl GBC {
-    pub fn new(rom_data: Vec<u8>, display_buffer: Arc<Mutex<RetainedImage>>) -> Result<Self> {
+    pub fn new(
+        rom_data: Vec<u8>,
+        display_buffer: Arc<Mutex<RetainedImage>>,
+        gui_ctx: eframe::egui::Context,
+    ) -> Result<Self> {
         Ok(Self {
-            state: GBCState::new(rom_data, display_buffer)?,
+            state: GBCState::new(rom_data, display_buffer, gui_ctx)?,
         })
     }
 
@@ -70,7 +74,7 @@ pub struct GBCState {
 }
 
 impl GBCState {
-    pub fn new(rom_data: Vec<u8>, display_buffer: Arc<Mutex<RetainedImage>>) -> Result<Self> {
+    pub fn new(rom_data: Vec<u8>, display_buffer: Arc<Mutex<RetainedImage>>, gui_ctx: eframe::egui::Context) -> Result<Self> {
         Ok(Self {
             cpu: CPU::new(),
             mem: VirtualMemory::new(rom_data)?,
@@ -78,7 +82,7 @@ impl GBCState {
             timer_ctrl: TimerController::new(),
             dma_ctrl: DMAController::new(),
             delayed_actions: DelayedActions::new(),
-            render_engine: Renderer::new(display_buffer),
+            render_engine: Renderer::new(display_buffer, gui_ctx),
             machine_cycle: 0,
         })
     }
