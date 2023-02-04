@@ -128,7 +128,7 @@ pub(super) fn instr_0x0F(state: &mut GBCState) {
 }
 
 pub(super) fn instr_0x10(state: &mut GBCState) {
-    todo!();
+    // todo!();
     consume_cycles(state, 4);
 }
 
@@ -295,7 +295,7 @@ pub(super) fn instr_0x26(state: &mut GBCState) {
 }
 
 pub(super) fn instr_0x27(state: &mut GBCState) {
-    todo!();
+    // todo!();
     consume_cycles(state, 4);
 }
 

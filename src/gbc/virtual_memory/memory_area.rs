@@ -3,7 +3,7 @@ use std::borrow::Cow;
 use enum_map::Enum;
 use tracing::{error, trace};
 
-#[derive(Enum)]
+#[derive(Enum, Clone, Copy)]
 pub enum MemoryAreaName {
     PrgRomFixed,
     PrgRomBanked,
@@ -12,7 +12,9 @@ pub enum MemoryAreaName {
     WorkRamFixed,
     WorkRamBanked,
     Oam,
+    Invalid2,
     BGPalette,
+    OBJPalette,
     IORegisters,
     HighRam,
     IERegister,

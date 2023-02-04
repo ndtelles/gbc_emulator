@@ -4,7 +4,7 @@ mod instructions;
 mod op_helpers;
 mod register;
 
-use tracing::{trace_span, trace, info_span, debug_span};
+use tracing::{trace_span, trace, info_span, debug_span, debug};
 
 use crate::util::{combine_high_low, Bytes};
 
@@ -80,6 +80,7 @@ fn call(state: &mut GBCState, new_pc: u16) {
 }
 
 fn handle_interrupt(state: &mut GBCState, intr: InterruptFlag) {
+    trace!("Handling {} interrupt", intr.to_string());
     interrupt_controller::reset_interrupt_request_flag(state, intr);
     interrupt_controller::disable_interrupts(state);
     call(state, intr.handler_address());

@@ -1,6 +1,8 @@
+use std::fmt;
+
 use int_enum::IntEnum;
 
-use crate::util::{reset_bit, set_bit};
+use crate::util::{reset_bit, set_bit, index_bits};
 
 use super::{
     delay_action,
@@ -25,13 +27,19 @@ impl InterruptController {
 
 // Interrupt flags. The enum value corresponds to the flag's bit index in the flag byte
 #[repr(u8)]
-#[derive(Clone, Copy, IntEnum)]
+#[derive(Clone, Copy, IntEnum, Debug)]
 pub enum InterruptFlag {
     VerticalBlanking = 0,
     LcdcStatusInterrupt = 1,
     TimerOverflow = 2,
     SerialTransferComplete = 3,
     Joypad = 4,
+}
+impl fmt::Display for InterruptFlag {
+    // Allow printing enum name as string for tracing
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        fmt::Debug::fmt(self, f)
+    }
 }
 
 impl InterruptFlag {
@@ -79,6 +87,9 @@ pub fn disable_interrupts(state: &mut GBCState) {
 
 pub fn set_interrupt_request_flag(state: &mut GBCState, flag: InterruptFlag) {
     let flags = virtual_memory::read(state, INTERRUPT_REQUEST_ADDR);
+    if index_bits(flags, flag as usize) {
+        return; // Interrupt flag already set
+    }
     virtual_memory::write_without_triggers(state, INTERRUPT_REQUEST_ADDR, set_bit(flags, flag as usize));
 }
 

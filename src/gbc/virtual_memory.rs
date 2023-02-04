@@ -46,7 +46,11 @@ const WORK_RAM_BANKED_ADDR_END: u16 = 0xDFFF;
 pub const OAM_ADDR: u16 = 0xFE00;
 const OAM_ADDR_END: u16 = 0xFE9F;
 
+const INVALID_2_ADDR: u16 = 0xFEA0;
+const INVALID_2_ADDR_END: u16 = 0xFEFF;
+
 const BG_PALETTE_ADDR: u16 = 0xFF69;
+const OBJ_PALETTE_ADDR: u16 = 0xFF6B;
 const IO_REGISTERS_ADDR: u16 = 0xFF00;
 const IO_REGISTERS_ADDR_END: u16 = 0xFF7F;
 
@@ -63,6 +67,7 @@ pub const VRAM_BANK_REGISTER: u16 = 0xFF4F;
 const OAM_DMA_REGISTER: u16 = 0xFF46;
 pub const VRAM_DMA_REGISTER: u16 = 0xFF55;
 const BG_PALETTE_INDEX_REGISTER: u16 = 0xFF68;
+const OBJ_PALETTE_INDEX_REGISTER: u16 = 0xFF6A;
 
 /**
  * ROM Data Addresses
@@ -118,8 +123,16 @@ impl VirtualMemory {
                     1,
                     MemoryPermission::ReadAndWrite,
                 ),
+                MemoryAreaName::Invalid2 => MemoryArea::new(
+                    INVALID_2_ADDR,
+                    INVALID_2_ADDR_END,
+                    1,
+                    MemoryPermission::None,
+                ),
                 // 64 Bytes of selectable palette memory
                 MemoryAreaName::BGPalette => MemoryArea::new(BG_PALETTE_ADDR, BG_PALETTE_ADDR, 64, MemoryPermission::ReadAndWrite),
+                // 64 Bytes of selectable palette memory
+                MemoryAreaName::OBJPalette => MemoryArea::new(OBJ_PALETTE_ADDR, OBJ_PALETTE_ADDR, 64, MemoryPermission::ReadAndWrite),
                 MemoryAreaName::IORegisters => MemoryArea::new(
                     IO_REGISTERS_ADDR,
                     IO_REGISTERS_ADDR_END,
@@ -145,6 +158,9 @@ impl VirtualMemory {
         vm.areas[MemoryAreaName::PrgRomFixed]
             .fill_from_src(&rom_data[..=PRG_ROM_FIXED_ADDR_END.into()]);
         vm.areas[MemoryAreaName::PrgRomBanked].fill_from_src(&rom_data);
+
+        // Initialize palette mem
+        vm.areas[MemoryAreaName::BGPalette].fill_from_src(&[0xFF; 64]);
         Ok(vm)
     }
 }
@@ -158,13 +174,15 @@ fn map_memory(addr: u16) -> MemoryAreaName {
         WORK_RAM_FIXED_ADDR..=WORK_RAM_FIXED_ADDR_END => MemoryAreaName::WorkRamFixed,
         WORK_RAM_BANKED_ADDR..=WORK_RAM_BANKED_ADDR_END => MemoryAreaName::WorkRamBanked,
         OAM_ADDR..=OAM_ADDR_END => MemoryAreaName::Oam,
-        // BG Pallete must be specified before IO registers in this mapping!
+        INVALID_2_ADDR..=INVALID_2_ADDR_END => MemoryAreaName::Invalid2,
+        // Palettes must be specified before IO registers in this mapping!
         BG_PALETTE_ADDR => MemoryAreaName::BGPalette,
+        OBJ_PALETTE_ADDR => MemoryAreaName::OBJPalette,
         IO_REGISTERS_ADDR..=IO_REGISTERS_ADDR_END => MemoryAreaName::IORegisters,
         HIGH_RAM_ADDR..=HIGH_RAM_ADDR_END => MemoryAreaName::HighRam,
         IE_REGISTER_ADDR => MemoryAreaName::IERegister,
         // Invalid address areas
-        0xE000..=0xFDFF | 0xFEA0..=0xFEFF => {
+        0xE000..=0xFDFF => {
             error!("Invalid memory area");
             unimplemented!();
         }
@@ -223,12 +241,33 @@ fn handle_write_triggered_events(state: &mut GBCState, addr: u16, val: u8) {
         }
         // Maybe auto increment after writing to palette
         BG_PALETTE_ADDR => {
-            let palette_reg_val = state.mem.areas[MemoryAreaName::IORegisters].read(addr);
+            let palette_reg_val =
+                state.mem.areas[MemoryAreaName::IORegisters].read(BG_PALETTE_INDEX_REGISTER);
             let auto_incr = index_bits(palette_reg_val, 7);
             if auto_incr {
                 let curr_bank = state.mem.areas[MemoryAreaName::BGPalette].get_active_bank();
                 let new_bank = (curr_bank + 1) % 64;
+                state.mem.areas[MemoryAreaName::IORegisters]
+                    .write(BG_PALETTE_INDEX_REGISTER, 0x80 | new_bank as u8);
                 state.mem.areas[MemoryAreaName::BGPalette].set_active_bank(new_bank);
+            }
+        }
+        // Set the palette index
+        OBJ_PALETTE_INDEX_REGISTER => {
+            let palette_idx = (val & 0x3F).into();
+            state.mem.areas[MemoryAreaName::OBJPalette].set_active_bank(palette_idx);
+        }
+        // Maybe auto increment after writing to palette
+        OBJ_PALETTE_ADDR => {
+            let palette_reg_val =
+                state.mem.areas[MemoryAreaName::IORegisters].read(OBJ_PALETTE_INDEX_REGISTER);
+            let auto_incr = index_bits(palette_reg_val, 7);
+            if auto_incr {
+                let curr_bank = state.mem.areas[MemoryAreaName::OBJPalette].get_active_bank();
+                let new_bank = (curr_bank + 1) % 64;
+                state.mem.areas[MemoryAreaName::IORegisters]
+                    .write(OBJ_PALETTE_INDEX_REGISTER, 0x80 | new_bank as u8);
+                state.mem.areas[MemoryAreaName::OBJPalette].set_active_bank(new_bank);
             }
         }
         TIMER_CONTROL_REGISTER => timer_controller::set_timer_control_register(state, val),
@@ -280,15 +319,16 @@ pub fn read_bytes(state: &GBCState, addr: u16, length_bytes: usize) -> Cow<[u8]>
 }
 
 pub fn write(state: &mut GBCState, addr: u16, val: u8) {
+    let area = map_memory(addr);
     let span = debug_span!(
         "VM Write",
         addr = format!("{:#06x}", addr),
-        value = format!("{:#04x}", val)
+        bank = state.mem.areas[area].get_active_bank(),
+        value = format!("{:#04x}", val),
     )
     .entered();
 
     let val = preprocess_value(state, addr, val);
-    let area = map_memory(addr);
     state.mem.areas[area].write(addr, val);
     handle_write_triggered_events(state, addr, val);
 
@@ -301,7 +341,17 @@ pub fn write(state: &mut GBCState, addr: u16, val: u8) {
  */
 pub fn write_without_triggers(state: &mut GBCState, addr: u16, val: u8) {
     let area = map_memory(addr);
+    let span = debug_span!(
+        "VM Write (no trigger)",
+        addr = format!("{:#06x}", addr),
+        bank = state.mem.areas[area].get_active_bank(),
+        value = format!("{:#04x}", val),
+    )
+    .entered();
+
     state.mem.areas[area].write(addr, val);
+
+    span.exit();
 }
 
 pub fn write_bytes(state: &mut GBCState, addr: u16, vals: &[u8]) {

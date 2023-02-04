@@ -24,7 +24,7 @@ impl App {
             None => {
                 if ui.button("Load ROM").clicked() {
                     if let Some(path) = rfd::FileDialog::new()
-                        .add_filter("GBC ROM", &["gbc"])
+                        .add_filter("GB(C) ROM", &["gbc", "gb"])
                         .pick_file()
                     {
                         self.spawn_gbc(path, ctx);
