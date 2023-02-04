@@ -4,6 +4,7 @@ mod pixel_fetcher;
 use std::{
     collections::VecDeque,
     sync::{Arc, Mutex},
+    thread, time,
 };
 
 use eframe::epaint::ColorImage;
@@ -19,6 +20,7 @@ use super::{
     virtual_memory, GBCState,
 };
 
+const FRAME_PERIOD: time::Duration = time::Duration::from_micros(16_666);
 const GBC_RESOLUTION_X: u8 = 160;
 const GBC_RESOLUTION_Y: u8 = 144;
 const IMG_BUFFER_SIZE: usize = GBC_RESOLUTION_X as usize * GBC_RESOLUTION_Y as usize * 3;
@@ -41,6 +43,7 @@ pub struct Renderer {
     pixel_fetcher: PixelFetcher,
     lcd_x: u8,
     lcd_y: u8,
+    last_frame_time: time::Instant,
 }
 
 impl Renderer {
@@ -55,6 +58,7 @@ impl Renderer {
             pixel_fetcher: PixelFetcher::new(),
             lcd_x: 0,
             lcd_y: 0,
+            last_frame_time: time::Instant::now(),
         }
     }
 }
@@ -122,6 +126,12 @@ fn publish_frame(state: &mut GBCState) {
         &state.render_engine.working_frame_buffer,
     );
     let texture = RetainedImage::from_color_image("GBC frame", image);
+
+    // Sleep until frame is needed
+    let time_since_last_frame = state.render_engine.last_frame_time.elapsed();
+    thread::sleep(FRAME_PERIOD.saturating_sub(time_since_last_frame));
+    state.render_engine.last_frame_time = time::Instant::now();
+
     let mut display_buffer = state.render_engine.display_buffer.lock().unwrap();
     *display_buffer = texture;
 
