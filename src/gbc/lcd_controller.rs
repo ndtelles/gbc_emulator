@@ -1,14 +1,15 @@
 use int_enum::IntEnum;
-use tracing::{trace, debug_span};
+use tracing::{debug_span, trace};
 
 use crate::{
-    util::index_bits, gbc::dma_controller,
+    gbc::{
+        dma_controller,
+        interrupt_controller::{self, InterruptFlag},
+    },
+    util::index_bits,
 };
 
-use super::{
-    virtual_memory,
-    GBCState,
-};
+use super::{virtual_memory, GBCState};
 
 const LCD_CONTROL_REGISTER: u16 = 0xFF40;
 pub const LCD_STATUS_REGISTER: u16 = 0xFF41;
@@ -156,9 +157,12 @@ pub fn update_ppu_mode(state: &mut GBCState, new_mode: PPUMode) {
     val = (val & 0xFC) | new_mode.int_value();
     virtual_memory::write_without_triggers(state, LCD_STATUS_REGISTER, val);
 
-    if let PPUMode::HBlank = new_mode {
-        // Trigger hblank DMA transfer
-        dma_controller::process_hblank_transfer(state);
+    match new_mode {
+        PPUMode::HBlank => dma_controller::process_hblank_transfer(state),
+        PPUMode::VBlank => {
+            interrupt_controller::set_interrupt_request_flag(state, InterruptFlag::VerticalBlanking)
+        }
+        _ => {}
     }
 }
 

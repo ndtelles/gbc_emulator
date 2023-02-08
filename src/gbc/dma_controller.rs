@@ -3,6 +3,8 @@ use std::{
     ops::Range,
 };
 
+use tracing::{debug_span, trace, error};
+
 use crate::util::{combine_high_low, index_bits};
 
 use super::{
@@ -55,13 +57,14 @@ pub fn tick(state: &mut GBCState) {
  * Trigger oam transfer when register 0xFF46 is written to
  */
 pub fn trigger_oam_transfer(state: &mut GBCState, val: u8) {
-    if val >= 0xC0 {
-        return; // Invalid start address
-    }
-
     // Not sure what should happen if OAM DMA is triggered again while
     // it's already running. In this case we will just restart the process.
     let src = (val as u16) << 8;
+    if src < 0x8000 || src > 0xDF00 {
+        error!("Invalid OAM transfer start address {:#06x}", src);
+        return; // Invalid start address
+    }
+
     state.dma_ctrl.oam_transfer = DMATransfer::new(src, OAM_ADDR, OAM_TRANSFER_BYTES, 1);
 }
 
@@ -111,8 +114,16 @@ fn process_oam_transfer(state: &mut GBCState) {
     let next = state.dma_ctrl.oam_transfer.iterator.next();
 
     if let Some((src, dest)) = next {
+        let span = debug_span!(
+            "OAM DMA Transfer",
+            src = format!("{:#06x}", src),
+            dest = format!("{:#06x}", dest)
+        )
+        .entered();
+        trace!("Processing DMA transfer");
         let val = virtual_memory::read(state, src);
         virtual_memory::write(state, dest, val);
+        span.exit();
     }
 }
 
@@ -126,6 +137,14 @@ pub fn process_hblank_transfer(state: &mut GBCState) {
     }
 
     let (src, dest) = next.unwrap();
+    let span = debug_span!(
+        "HBlank DMA Transfer",
+        src = format!("{:#06x}", src),
+        dest = format!("{:#06x}", dest)
+    )
+    .entered();
+    trace!("Processing DMA transfer");
+
     let vals = virtual_memory::read_bytes(state, src, 16).into_owned();
     virtual_memory::write_bytes(state, dest, &vals);
 
@@ -138,6 +157,7 @@ pub fn process_hblank_transfer(state: &mut GBCState) {
         // Write back to DMA register that transfer has finished
         None => virtual_memory::write_without_triggers(state, VRAM_DMA_REGISTER, 0x00FF),
     }
+    span.exit();
 }
 
 /**
@@ -149,6 +169,16 @@ fn process_general_purpose_transfer(
     dest_addr: u16,
     length_bytes: usize,
 ) {
+    let span = debug_span!(
+        "General Purpose DMA Transfer",
+        src = format!("{:#06x}", src_addr),
+        dest = format!("{:#06x}", dest_addr),
+        length_bytes = length_bytes,
+    )
+    .entered();
+    trace!("Processing DMA transfer");
+    
     let vals = virtual_memory::read_bytes(state, src_addr, length_bytes).into_owned();
     virtual_memory::write_bytes(state, dest_addr, &vals);
+    span.exit();
 }

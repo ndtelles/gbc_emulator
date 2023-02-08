@@ -161,6 +161,7 @@ impl VirtualMemory {
 
         // Initialize palette mem
         vm.areas[MemoryAreaName::BGPalette].fill_from_src(&[0xFF; 64]);
+        vm.areas[MemoryAreaName::OBJPalette].fill_from_src(&[0xFF; 64]);
         Ok(vm)
     }
 }
@@ -319,6 +320,9 @@ pub fn read_bytes(state: &GBCState, addr: u16, length_bytes: usize) -> Cow<[u8]>
 }
 
 pub fn write(state: &mut GBCState, addr: u16, val: u8) {
+    if addr == 0xC280 {
+        trace!("Yoooo");
+    }
     let area = map_memory(addr);
     let span = debug_span!(
         "VM Write",

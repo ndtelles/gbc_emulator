@@ -9,7 +9,7 @@ use std::{
 
 use eframe::epaint::ColorImage;
 use egui_extras::RetainedImage;
-use tracing::{debug, debug_span};
+use tracing::{debug, debug_span, trace};
 
 use crate::util::combine_high_low;
 
@@ -126,6 +126,9 @@ fn publish_frame(state: &mut GBCState) {
         &state.render_engine.working_frame_buffer,
     );
     let texture = RetainedImage::from_color_image("GBC frame", image);
+
+    // debug!("{:?}", virtual_memory::read_bytes(state, 0xFF69, 0x0400));
+    // debug!("{:?}", virtual_memory::borrow_palette_mem(state));
 
     // Sleep until frame is needed
     let time_since_last_frame = state.render_engine.last_frame_time.elapsed();

@@ -63,10 +63,6 @@ pub fn tick(state: &mut GBCState) {
     {
         set_interrupt_request_flag(state, InterruptFlag::LcdcStatusInterrupt);
     }
-
-    if stat.ppu_mode == PPUMode::VBlank {
-        set_interrupt_request_flag(state, InterruptFlag::VerticalBlanking);
-    }
 }
 
 pub fn enable_interrupts(state: &mut GBCState) {
@@ -98,20 +94,6 @@ pub fn reset_interrupt_request_flag(state: &mut GBCState, flag: InterruptFlag) {
     virtual_memory::write_without_triggers(
         state,
         INTERRUPT_REQUEST_ADDR,
-        reset_bit(flags, flag as usize),
-    );
-}
-
-pub fn set_interrupt_enable_flag(state: &mut GBCState, flag: InterruptFlag) {
-    let flags = virtual_memory::read(state, INTERRUPT_ENABLE_ADDR);
-    virtual_memory::write(state, INTERRUPT_ENABLE_ADDR, set_bit(flags, flag as usize));
-}
-
-pub fn reset_interrupt_enable_flag(state: &mut GBCState, flag: InterruptFlag) {
-    let flags = virtual_memory::read(state, INTERRUPT_ENABLE_ADDR);
-    virtual_memory::write(
-        state,
-        INTERRUPT_ENABLE_ADDR,
         reset_bit(flags, flag as usize),
     );
 }
