@@ -168,7 +168,8 @@ pub fn update_ppu_mode(state: &mut GBCState, new_mode: PPUMode) {
 }
 
 /**
- * Update comparison of lyc and ly in STAT register
+ * Update comparison of lyc and ly in STAT register. Called whenever LCD_Y or LY_COMPARE 
+ * registers are updated.
  */
 pub fn update_lyc_match_ly_check(state: &mut GBCState) {
     let ly = virtual_memory::read(state, LCD_Y_COORDINATE_REGISTER);
@@ -176,7 +177,9 @@ pub fn update_lyc_match_ly_check(state: &mut GBCState) {
     let mut stat = virtual_memory::read(state, LCD_STATUS_REGISTER);
     let matches = ly == lyc;
     stat = (stat & 0xFB) | ((matches as u8) << 2);
-    virtual_memory::write(state, LCD_STATUS_REGISTER, stat);
+    // TODO (Should this be write_without_triggers?). GBC behaves different when making
+    // the change for some reason.
+    virtual_memory::write_without_triggers(state, LCD_STATUS_REGISTER, stat);
 }
 
 // Should only be set internally by lcd controller

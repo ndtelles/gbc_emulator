@@ -196,16 +196,16 @@ fn get_bg_tile_data_addr(
 }
 
 fn get_bg_tile_data(state: &mut GBCState, tile_addr: u16, attr: &TileAttributes) -> u8 {
-    let mut tile_row_low = lcd_controller::read_from_vram_bank(state, tile_addr, attr.vram_bank);
+    let mut tile_row_half = lcd_controller::read_from_vram_bank(state, tile_addr, attr.vram_bank);
     if attr.horizontal_flip {
-        tile_row_low = tile_row_low.reverse_bits();
+        tile_row_half = tile_row_half.reverse_bits();
     }
-    tile_row_low
+    tile_row_half
 }
 
 fn build_pixels_from_tile_row(row_high: u8, row_low: u8, attr: &TileAttributes) -> [Pixel; 8] {
     core::array::from_fn(|i| {
-        let color_idx = (index_bits(row_high, i) as u8) << 1 | index_bits(row_low, i) as u8;
+        let color_idx = (index_bits(row_high, 7 - i) as u8) << 1 | index_bits(row_low, 7 - i) as u8;
         Pixel {
             color_idx,
             palette: attr.palette,

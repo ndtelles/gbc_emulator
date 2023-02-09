@@ -74,7 +74,11 @@ pub struct GBCState {
 }
 
 impl GBCState {
-    pub fn new(rom_data: Vec<u8>, display_buffer: Arc<Mutex<RetainedImage>>, gui_ctx: eframe::egui::Context) -> Result<Self> {
+    pub fn new(
+        rom_data: Vec<u8>,
+        display_buffer: Arc<Mutex<RetainedImage>>,
+        gui_ctx: eframe::egui::Context,
+    ) -> Result<Self> {
         Ok(Self {
             cpu: CPU::new(),
             mem: VirtualMemory::new(rom_data)?,

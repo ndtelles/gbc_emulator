@@ -80,7 +80,7 @@ fn call(state: &mut GBCState, new_pc: u16) {
 }
 
 fn handle_interrupt(state: &mut GBCState, intr: InterruptFlag) {
-    trace!("Handling {} interrupt", intr.to_string());
+    debug!("Handling {} interrupt", intr.to_string());
     interrupt_controller::reset_interrupt_request_flag(state, intr);
     interrupt_controller::disable_interrupts(state);
     call(state, intr.handler_address());
