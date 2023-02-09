@@ -145,6 +145,7 @@ pub fn tick(state: &mut GBCState) {
         CYCLES_BEFORE_DRAWING if state.machine_cycle < VERTICAL_BLANK_BEGIN_CYCLE => {
             update_ppu_mode(state, PPUMode::Drawing);
         }
+        // HBlank mode is manually triggered by render engine
         _ => {}
     };
 

@@ -2,7 +2,7 @@ use std::fmt;
 
 use int_enum::IntEnum;
 
-use crate::util::{reset_bit, set_bit, index_bits};
+use crate::util::{index_bits, reset_bit, set_bit};
 
 use super::{
     delay_action,
@@ -15,12 +15,16 @@ pub const INTERRUPT_ENABLE_ADDR: u16 = 0xFFFF;
 
 pub struct InterruptController {
     interrupt_master_enable: bool,
+    // Keep track of stat interrupt signal so we can
+    // trigger interrupt only on rising edge
+    stat_interrupt_line: bool,
 }
 
 impl InterruptController {
     pub fn new() -> Self {
         Self {
             interrupt_master_enable: false,
+            stat_interrupt_line: false,
         }
     }
 }
@@ -55,12 +59,16 @@ impl InterruptFlag {
 }
 
 pub fn tick(state: &mut GBCState) {
+    let old_stat_interrupt_line = state.intr_ctrl.stat_interrupt_line;
     let stat = lcd_controller::get_lcd_status_register(state);
-    if (stat.ppu_mode == PPUMode::HBlank && stat.hblank_interrupt_source)
+    state.intr_ctrl.stat_interrupt_line = (stat.ppu_mode == PPUMode::HBlank
+        && stat.hblank_interrupt_source)
         || (stat.ppu_mode == PPUMode::OAMScan && stat.oam_stat_interrupt_source)
         || (stat.ppu_mode == PPUMode::VBlank && stat.vblank_interrupt_source)
-        || (stat.lyc_match_ly && stat.lyc_match_ly_interrupt_source)
-    {
+        || (stat.lyc_match_ly && stat.lyc_match_ly_interrupt_source);
+
+    if !old_stat_interrupt_line && state.intr_ctrl.stat_interrupt_line {
+        // Only trigger interrupt on rising edge. Known as "STAT blocking"
         set_interrupt_request_flag(state, InterruptFlag::LcdcStatusInterrupt);
     }
 }
@@ -86,7 +94,11 @@ pub fn set_interrupt_request_flag(state: &mut GBCState, flag: InterruptFlag) {
     if index_bits(flags, flag as usize) {
         return; // Interrupt flag already set
     }
-    virtual_memory::write_without_triggers(state, INTERRUPT_REQUEST_ADDR, set_bit(flags, flag as usize));
+    virtual_memory::write_without_triggers(
+        state,
+        INTERRUPT_REQUEST_ADDR,
+        set_bit(flags, flag as usize),
+    );
 }
 
 pub fn reset_interrupt_request_flag(state: &mut GBCState, flag: InterruptFlag) {
