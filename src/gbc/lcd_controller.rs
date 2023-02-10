@@ -17,6 +17,8 @@ const SCROLL_Y_REGISTER: u16 = 0xFF42;
 const SCROLL_X_REGISTER: u16 = 0xFF43;
 pub const LCD_Y_COORDINATE_REGISTER: u16 = 0xFF44;
 pub const LY_COMPARE_REGISTER: u16 = 0xFF45;
+const WINDOW_Y_REGISTER: u16 = 0xFF4A;
+const WINDOW_X_REGISTER: u16 = 0xFF4B;
 
 const CYCLES_PER_SCANLINE: u16 = 114;
 const CYCLES_BEFORE_DRAWING: u16 = 20;
@@ -32,8 +34,8 @@ pub enum TileMapArea {
 #[repr(u8)]
 #[derive(Clone, Copy, IntEnum)]
 pub enum TileDataArea {
-    Lower = 0,
-    Upper = 1,
+    Upper = 0,
+    Lower = 1,
 }
 
 #[repr(u8)]
@@ -45,7 +47,7 @@ pub enum VRAMBank {
 
 pub struct LCDControl {
     pub lcd_enable: bool,
-    pub window_tile_map_area: bool,
+    pub window_tile_map_area: TileMapArea,
     pub window_enable: bool,
     pub bg_and_window_tile_data_area: TileDataArea,
     pub bg_tile_map_area: TileMapArea,
@@ -58,7 +60,7 @@ impl From<u8> for LCDControl {
     fn from(val: u8) -> Self {
         Self {
             lcd_enable: index_bits(val, 7),
-            window_tile_map_area: index_bits(val, 6),
+            window_tile_map_area: TileMapArea::from_int(index_bits(val, 6) as u8).unwrap(),
             window_enable: index_bits(val, 5),
             bg_and_window_tile_data_area: TileDataArea::from_int(index_bits(val, 4) as u8).unwrap(),
             bg_tile_map_area: TileMapArea::from_int(index_bits(val, 3) as u8).unwrap(),
@@ -105,6 +107,21 @@ impl From<u8> for LCDStatus {
     }
 }
 
+pub struct LCDController {
+    // Whether we have triggered the y coordinate requirement for drawing window
+    pub window_y_triggered: bool,
+    // Whether we have triggered the x coordinate requirement for drawing window
+    pub window_x_triggered: bool,
+}
+impl LCDController {
+    pub fn new() -> Self {
+        Self {
+            window_y_triggered: false,
+            window_x_triggered: false,
+        }
+    }
+}
+
 pub fn get_lcd_status_register(state: &GBCState) -> LCDStatus {
     LCDStatus::from(virtual_memory::read(state, LCD_STATUS_REGISTER))
 }
@@ -122,17 +139,46 @@ pub fn get_lcd_y_coordinate(state: &GBCState) -> u8 {
     virtual_memory::read(state, LCD_Y_COORDINATE_REGISTER)
 }
 
+pub fn get_window_y_coordinate(state: &GBCState) -> u8 {
+    virtual_memory::read(state, WINDOW_Y_REGISTER)
+}
+
+pub fn get_window_x_coordinate(state: &GBCState) -> u8 {
+    // Window X register is 7 + the intended coordinate
+    virtual_memory::read(state, WINDOW_X_REGISTER).saturating_sub(7)
+}
+
+/**
+ * Called by pixel fetcher to possibly update whether we have reached the window x coordinate
+ */
+pub fn maybe_trigger_window_x_requirement(state: &mut GBCState, fetching_x: u8) {
+    state.lcd_ctrl.window_x_triggered =
+        state.lcd_ctrl.window_x_triggered || (fetching_x >= get_window_x_coordinate(state));
+}
+
 pub fn read_from_vram_bank(state: &mut GBCState, addr: u16, bank: VRAMBank) -> u8 {
     virtual_memory::read_override_bank(state, addr, bank.int_value().into())
+}
+
+/**
+ * What cycle within the scanline we are at
+ */
+fn get_scanline_cycle_idx(state: &GBCState) -> u16 {
+    state.machine_cycle % CYCLES_PER_SCANLINE
 }
 
 pub fn tick(state: &mut GBCState) {
     let span = debug_span!("LCD Controller").entered();
 
-    let scanline_idx = state.machine_cycle % CYCLES_PER_SCANLINE;
+    let scanline_idx = get_scanline_cycle_idx(state);
     if scanline_idx == 0 {
         // Beginning of scanline
+        state.lcd_ctrl.window_x_triggered = false;
         set_lcd_y_coordinate(state, (state.machine_cycle / CYCLES_PER_SCANLINE) as u8)
+    }
+    if state.machine_cycle == 0 {
+        // Beginning of frame
+        state.lcd_ctrl.window_y_triggered = false;
     }
 
     match scanline_idx {
@@ -159,6 +205,11 @@ pub fn update_ppu_mode(state: &mut GBCState, new_mode: PPUMode) {
     virtual_memory::write_without_triggers(state, LCD_STATUS_REGISTER, val);
 
     match new_mode {
+        PPUMode::OAMScan => {
+            // Check if window has met y coordinate condition at start of OAMScan
+            state.lcd_ctrl.window_y_triggered = state.lcd_ctrl.window_y_triggered
+                || (get_lcd_y_coordinate(state) == get_window_y_coordinate(state));
+        }
         PPUMode::HBlank => dma_controller::process_hblank_transfer(state),
         PPUMode::VBlank => {
             interrupt_controller::set_interrupt_request_flag(state, InterruptFlag::VerticalBlanking)
@@ -168,7 +219,7 @@ pub fn update_ppu_mode(state: &mut GBCState, new_mode: PPUMode) {
 }
 
 /**
- * Update comparison of lyc and ly in STAT register. Called whenever LCD_Y or LY_COMPARE 
+ * Update comparison of lyc and ly in STAT register. Called whenever LCD_Y or LY_COMPARE
  * registers are updated.
  */
 pub fn update_lyc_match_ly_check(state: &mut GBCState) {

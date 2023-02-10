@@ -15,6 +15,7 @@ use crate::gbc::virtual_memory::VirtualMemory;
 use self::delay_action::DelayedActions;
 use self::dma_controller::DMAController;
 use self::interrupt_controller::InterruptController;
+use self::lcd_controller::LCDController;
 use self::render_engine::Renderer;
 use self::timer_controller::TimerController;
 
@@ -65,6 +66,7 @@ impl GBC {
 pub struct GBCState {
     cpu: CPU,
     mem: VirtualMemory,
+    lcd_ctrl: LCDController,
     intr_ctrl: InterruptController,
     timer_ctrl: TimerController,
     dma_ctrl: DMAController,
@@ -82,6 +84,7 @@ impl GBCState {
         Ok(Self {
             cpu: CPU::new(),
             mem: VirtualMemory::new(rom_data)?,
+            lcd_ctrl: LCDController::new(),
             intr_ctrl: InterruptController::new(),
             timer_ctrl: TimerController::new(),
             dma_ctrl: DMAController::new(),

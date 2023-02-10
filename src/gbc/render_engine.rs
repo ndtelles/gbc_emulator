@@ -67,7 +67,6 @@ pub fn tick(state: &mut GBCState) {
     let status_reg = lcd_controller::get_lcd_status_register(state);
 
     match status_reg.ppu_mode {
-        PPUMode::OAMScan => {}
         PPUMode::Drawing => {
             let span = debug_span!(
                 "Render Engine Draw",
@@ -100,7 +99,7 @@ pub fn tick(state: &mut GBCState) {
 
             span.exit();
         }
-        PPUMode::HBlank | PPUMode::VBlank => {}
+        _ => {}
     }
 }
 

@@ -5,7 +5,7 @@ use int_enum::IntEnum;
 use crate::{
     gbc::{
         lcd_controller::{self, LCDControl, TileDataArea, TileMapArea, VRAMBank},
-        GBCState,
+        GBCState, GBC,
     },
     util::index_bits,
 };
@@ -26,6 +26,7 @@ enum PixelFetcherState {
     FetchTileRowLow {
         tile_id: u8,
         tile_attr: TileAttributes,
+        fetching_window: bool,
     },
     FetchTileRowHigh {
         tile_row_low: u8,
@@ -73,6 +74,7 @@ pub(super) struct Pixel {
 
 pub(super) struct PixelFetcher {
     state: PixelFetcherState,
+    // Current display X coordinate we are fetching for
     fetching_x: u8,
 }
 impl PixelFetcher {
@@ -87,12 +89,26 @@ impl PixelFetcher {
 pub(super) fn tick(state: &mut GBCState, ctrl_reg: &LCDControl) {
     match state.render_engine.pixel_fetcher.state {
         PixelFetcherState::FetchTileID => {
-            let (tile_id, tile_attr) = get_bg_tile_id_and_attr(state, ctrl_reg);
-            state.render_engine.pixel_fetcher.state =
-                PixelFetcherState::FetchTileRowLow { tile_id, tile_attr };
+            lcd_controller::maybe_trigger_window_x_requirement(
+                state,
+                state.render_engine.pixel_fetcher.fetching_x,
+            );
+
+            let fetching_window = should_fetch_window(state, ctrl_reg);
+
+            let (tile_id, tile_attr) = get_bg_tile_id_and_attr(state, ctrl_reg, fetching_window);
+            state.render_engine.pixel_fetcher.state = PixelFetcherState::FetchTileRowLow {
+                tile_id,
+                tile_attr,
+                fetching_window,
+            };
         }
-        PixelFetcherState::FetchTileRowLow { tile_id, tile_attr } => {
-            let addr = get_bg_tile_data_addr(state, tile_id, &tile_attr, ctrl_reg);
+        PixelFetcherState::FetchTileRowLow {
+            tile_id,
+            tile_attr,
+            fetching_window,
+        } => {
+            let addr = get_bg_tile_data_addr(state, tile_id, &tile_attr, ctrl_reg, fetching_window);
             let tile_row_low = get_bg_tile_data(state, addr, &tile_attr);
             state.render_engine.pixel_fetcher.state = PixelFetcherState::FetchTileRowHigh {
                 tile_row_low,
@@ -128,28 +144,49 @@ pub(super) fn tick(state: &mut GBCState, ctrl_reg: &LCDControl) {
     }
 }
 
+fn should_fetch_window(state: &GBCState, ctrl_reg: &LCDControl) -> bool {
+    state.lcd_ctrl.window_x_triggered && state.lcd_ctrl.window_y_triggered && ctrl_reg.window_enable
+}
+
 /**
  * Use the current X and Y coordinate to fetch the current tile id from
  * the tile map
  */
-fn get_bg_tile_id_and_attr(state: &mut GBCState, ctrl_reg: &LCDControl) -> (u8, TileAttributes) {
-    let tile_map_base_addr = match ctrl_reg.bg_tile_map_area {
+fn get_bg_tile_id_and_attr(
+    state: &mut GBCState,
+    ctrl_reg: &LCDControl,
+    fetching_window: bool,
+) -> (u8, TileAttributes) {
+    let map_area = if fetching_window {
+        ctrl_reg.window_tile_map_area
+    } else {
+        ctrl_reg.bg_tile_map_area
+    };
+    let tile_map_base_addr = match map_area {
         TileMapArea::Map0 => TILE_MAP_0_ADDR,
         TileMapArea::Map1 => TILE_MAP_1_ADDR,
     };
 
-    let scroll_x = lcd_controller::get_scroll_x(state);
-    // Purposely wrap around after 256 pixels (max u8 size)
-    let x_coordinate = state
-        .render_engine
-        .pixel_fetcher
-        .fetching_x
-        .wrapping_add(scroll_x);
+    let (x_coordinate, y_coordinate) = if fetching_window {
+        let x = state.render_engine.pixel_fetcher.fetching_x;
+        let lcd_y = lcd_controller::get_lcd_y_coordinate(state);
+        let y = lcd_controller::get_window_y_coordinate(state).saturating_sub(lcd_y);
+        (x, y)
+    } else {
+        let scroll_x = lcd_controller::get_scroll_x(state);
+        // Purposely wrap around after 256 pixels (max u8 size)
+        let x = state
+            .render_engine
+            .pixel_fetcher
+            .fetching_x
+            .wrapping_add(scroll_x);
 
-    let y = lcd_controller::get_lcd_y_coordinate(state);
-    let scroll_y = lcd_controller::get_scroll_y(state);
-    // Purposely wrap around after 256 pixels (max u8 size)
-    let y_coordinate = y.wrapping_add(scroll_y);
+        let lcd_y = lcd_controller::get_lcd_y_coordinate(state);
+        let scroll_y = lcd_controller::get_scroll_y(state);
+        // Purposely wrap around after 256 pixels (max u8 size)
+        let y = lcd_y.wrapping_add(scroll_y);
+        (x, y)
+    };
 
     // Each tile in the 32x32 tile map corresponds to 8x8 pixels
     let x_tile_map_idx = (x_coordinate / 8) as u16;
@@ -167,11 +204,16 @@ fn get_bg_tile_data_addr(
     tile_id: u8,
     tile_attr: &TileAttributes,
     ctrl_reg: &LCDControl,
+    fetching_window: bool,
 ) -> u16 {
-    let y = lcd_controller::get_lcd_y_coordinate(state);
-    let scroll_y = lcd_controller::get_scroll_y(state);
-    // Purposely wrap around after 256 pixels (max u8 size)
-    let y_coordinate = y.wrapping_add(scroll_y) as u16;
+    let lcd_y = lcd_controller::get_lcd_y_coordinate(state);
+    let y_coordinate = if fetching_window {
+        lcd_controller::get_window_y_coordinate(state).saturating_sub(lcd_y)
+    } else {
+        let scroll_y = lcd_controller::get_scroll_y(state);
+        // Purposely wrap around after 256 pixels (max u8 size)
+        lcd_y.wrapping_add(scroll_y)
+    };
 
     let mut tile_addr = match ctrl_reg.bg_and_window_tile_data_area {
         TileDataArea::Lower => TILE_DATA_LOWER_ADDR + (BYTES_PER_TILE * tile_id as u16),
@@ -186,7 +228,7 @@ fn get_bg_tile_data_addr(
     };
 
     // Get the offset for the specific tile line
-    let mut y_offset = (y_coordinate % 8) * BYTES_PER_TILE_LINE;
+    let mut y_offset = (y_coordinate as u16 % 8) * BYTES_PER_TILE_LINE;
     if tile_attr.vertical_flip {
         // Flip the 3 bits that are y_offset to read the tile backwards
         y_offset = (!y_offset) & 0x0E;

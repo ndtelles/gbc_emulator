@@ -10,9 +10,9 @@ enum-map = "2.4.1"
 num-traits = "0.2.15"
 int-enum = "0.5.0"
 
-# Need latest eframe because release 0.2.1 crashes
-eframe = {git="https://github.com/emilk/egui/", default-features = false, features = ["default_fonts", "glow"]}
-egui_extras = {git="https://github.com/emilk/egui/", features = ["image"]}
+# Need latest eframe because release 0.20.1 crashes
+eframe = "0.21.0"
+egui_extras = {version="0.21.0", features = ["image"]}
 
 rfd = "0.10.0"
 color-eyre = "0.6.2"
