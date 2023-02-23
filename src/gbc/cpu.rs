@@ -16,6 +16,7 @@ use super::interrupt_controller::{
 use super::{virtual_memory, GBCState};
 
 const PROGRAM_START_ADDR: u16 = 0x0100;
+const STACK_POINTER_START_ADDR: u16 = 0xFFFE;
 
 pub struct CPU {
     registers: RegisterMap,
@@ -32,7 +33,7 @@ impl CPU {
             // Start of user program
             pc: PROGRAM_START_ADDR,
             // End of stack RAM (stack starts at end)
-            sp: 0xFFFE,
+            sp: STACK_POINTER_START_ADDR,
             halted: false,
             busy_t_cycles: 0,
         }

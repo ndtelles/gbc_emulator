@@ -36,7 +36,11 @@ impl RegisterMapMethods for RegisterMap {
         self[register]
     }
 
-    fn write(&mut self, register: Register, val: u8) {
+    fn write(&mut self, register: Register, mut val: u8) {
+        if let Register::F = register {
+            // Register F is 4 bits only
+            val = val & 0xF0;
+        }
         trace!("Wrote {:#04x} ({}) to CPU register {}", val, val, register.to_string());
         self[register] = val;
     }

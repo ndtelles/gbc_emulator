@@ -1600,18 +1600,17 @@ pub(super) fn instr_0xE7(state: &mut GBCState) {
     consume_cycles(state, 16);
 }
 
-// ADD SP, e
+// ADD SP, i8
 pub(super) fn instr_0xE8(state: &mut GBCState) {
-    let rhs = super::fetch_and_incr_pc(state) as u16;
-    let (result, carries) = add_and_get_carries(state.cpu.sp, rhs);
+    let rhs = super::fetch_and_incr_pc(state) as i8;
+    let (result, carries_or_borrows) = add_i8_to_u16(state.cpu.sp, rhs);
     state.cpu.sp = result;
-
     state.cpu.registers.set_flags(&FlagRegister {
         z: false,
         n: false,
         // https://stackoverflow.com/a/57978555
-        h: index_bits(carries, 3),
-        cy: index_bits(carries, 15),
+        h: index_bits(carries_or_borrows, 3),
+        cy: index_bits(carries_or_borrows, 15),
     });
     consume_cycles(state, 16);
 }

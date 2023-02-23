@@ -54,6 +54,10 @@ impl GBC {
             cpu::tick(&mut self.state);
             cpu::tick(&mut self.state);
             cpu::tick(&mut self.state);
+            cpu::tick(&mut self.state);
+            cpu::tick(&mut self.state);
+            cpu::tick(&mut self.state);
+            cpu::tick(&mut self.state);
             render_engine::tick(&mut self.state);
             render_engine::tick(&mut self.state);
             render_engine::tick(&mut self.state);

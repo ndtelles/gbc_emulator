@@ -1,6 +1,7 @@
 use std::collections::VecDeque;
 
 use int_enum::IntEnum;
+use tracing::debug;
 
 use crate::{
     gbc::{
@@ -126,16 +127,39 @@ pub(super) fn tick(state: &mut GBCState, ctrl_reg: &LCDControl) {
             state.render_engine.pixel_fetcher.state = PixelFetcherState::PixelsReady { pixels };
         }
         PixelFetcherState::PixelsReady { ref pixels } => {
-            if state.render_engine.bg_fifo.is_empty() {
+            if !state.render_engine.bg_fifo.is_empty() {
+                return;
+            }
+
+            let mut num_fetched_pixels = 0;
+            if state.render_engine.pixel_fetcher.fetching_x == 0 {
+                // Remove tile pixels outside of scroll range at beginning of scanline
+                let pixels_to_skip = lcd_controller::get_scroll_x(state) % 8;
+                state
+                    .render_engine
+                    .bg_fifo
+                    .extend(pixels.iter().skip(pixels_to_skip.into()).copied());
+                num_fetched_pixels = 8 - pixels_to_skip;
+            } else if state.render_engine.pixel_fetcher.fetching_x >= GBC_RESOLUTION_X - 8 {
+                // Remove tile pixels outside of scroll range at end of scanline
+                let pixels_to_include = 8 - (lcd_controller::get_scroll_x(state) % 8);
+                state
+                    .render_engine
+                    .bg_fifo
+                    .extend(pixels.iter().take(pixels_to_include.into()).copied());
+                num_fetched_pixels = pixels_to_include;
+            } else {
                 state.render_engine.bg_fifo.extend(pixels.iter().copied());
-                let next_x = state.render_engine.pixel_fetcher.fetching_x + 8;
-                if next_x >= GBC_RESOLUTION_X {
-                    state.render_engine.pixel_fetcher.state = PixelFetcherState::FinishedScanline;
-                    state.render_engine.pixel_fetcher.fetching_x = 0;
-                } else {
-                    state.render_engine.pixel_fetcher.state = PixelFetcherState::FetchTileID;
-                    state.render_engine.pixel_fetcher.fetching_x = next_x;
-                }
+                num_fetched_pixels = 8;
+            }
+
+            let next_x = state.render_engine.pixel_fetcher.fetching_x + num_fetched_pixels;
+            if next_x >= GBC_RESOLUTION_X {
+                state.render_engine.pixel_fetcher.state = PixelFetcherState::FinishedScanline;
+                state.render_engine.pixel_fetcher.fetching_x = 0;
+            } else {
+                state.render_engine.pixel_fetcher.state = PixelFetcherState::FetchTileID;
+                state.render_engine.pixel_fetcher.fetching_x = next_x;
             }
         }
         PixelFetcherState::FinishedScanline => {

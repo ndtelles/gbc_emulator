@@ -1,8 +1,13 @@
 #![allow(non_snake_case)]
 
+use tracing::debug;
+
 use crate::{
     gbc::{virtual_memory, GBCState},
-    util::{add_and_get_carries, index_bits, reset_bit, set_bit, subtract_and_get_borrows, Bytes, combine_high_low},
+    util::{
+        add_and_get_carries, combine_high_low, index_bits, reset_bit, set_bit,
+        subtract_and_get_borrows, Bytes,
+    },
 };
 
 use super::register::{FlagRegister, Register, RegisterMapMethods, RegisterPair};

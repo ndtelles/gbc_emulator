@@ -320,9 +320,6 @@ pub fn read_bytes(state: &GBCState, addr: u16, length_bytes: usize) -> Cow<[u8]>
 }
 
 pub fn write(state: &mut GBCState, addr: u16, val: u8) {
-    if addr == 0xC280 {
-        trace!("Yoooo");
-    }
     let area = map_memory(addr);
     let span = debug_span!(
         "VM Write",
